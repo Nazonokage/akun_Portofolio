@@ -1,0 +1,140 @@
+ 
+ 
+PROFILE SUMMARY 
+ 
+Information Technology graduate with experience in systems deployment, network 
+configuration, technical support, cybersecurity, and full-stack application 
+development. Skilled in troubleshooting complex technical issues, integrating end-to-
+end solutions, and supporting enterprise operations. Demonstrated experience 
+across infrastructure support, software development, project coordination, and 
+security-focused academic projects. Seeking opportunities in network 
+administration, systems administration, cloud infrastructure, cybersecurity 
+operations, or technical solutions engineering. 
+EDUCATION 
+ PHINMA University of Iloilo 
+o Rizal St, Iloilo City Proper, Iloilo City, 5000 Iloilo 
+o BSIT (Major in Computer Security) 2022 –2026 
+o Dean’s Lister 2022 - 2023 
+ Cabatuan National Comprehensive High School 
+o Serrano St. Cabatuan, Iloilo  
+o Senior High: Computer System Servicing (CSS) – With Honors 2020 – 2022 
+Work Experience 
+ 
+Editorial Operation (Content Editor) – IT Intern 
+RELX - Reed Elsevier | Iloilo Business Park, Megaworld Blvd, Mandurriao, Iloilo 
+City, 5000 Iloilo| Nov 2025 – Mar 2026 
+ Automated and optimized the processing of high-volume legal documentation 
+within a corporate publishing ecosystem, consistently exceeding daily production 
+quotas.   
+ Maintained strict data integrity and quality assurance standards leveraging 
+advanced Microsoft Excel functions and enterprise data management tools.  
+Office Assistant | PHINMA University of Iloilo (Campus Finance Office) 
+Rizal St, Iloilo City Proper, Iloilo City, 5000 Iloilo| 2022 – 2026 
+ Managed critical administrative workflows and handled sensitive financial 
+documentation, including the secure indexing and archiving of check vouchers 
+ Executed high-accuracy financial data encoding into internal accounting systems, 
+ensuring operational compliance and streamlined departmental records 
+Hardware Diagnostic & Repair Technician | PHINMA University of Iloilo 
+Rizal St, Iloilo City Proper, Iloilo City, 5000 Iloilo| 2022 – 2025 
+ Provided Hardware Diagnostics & Repair and board-level repair services 
+(soldering, multimeter testing) to restore faulty system components. 
+ Volunteered for university IT infrastructure deployment, overseeing computer 
+laboratory OS imaging, network configuration, and end-to-end live streaming 
+operations. 
+Independent Freelance Software Developer & Project Manager 
+Remote / Various Regions, Philippines | 2022 – 2025 
+ Gathered client requirements and translated business needs into functional 
+software solutions. 
+ Designed and integrated frontend, backend, and database components for web 
+and desktop applications. 
+ Coordinated project timelines, client communication, and technical delivery across 
+multiple engagements. 
+ Delivered end-to-end solutions while ensuring quality, usability, and stakeholder 
+satisfaction. 
+PROJECTS 
+ 
+ENHANCED DDoS MONITOR - SECURITY MONITORING WEB APP Capstone Project | 
+Python | Flask | JavaScript | Chart.js | 2025 
+ Designed and implemented a real-time network security monitoring platform 
+capable of detecting abnormal traffic patterns and generating automated threat alerts. 
+ Created a multi-factor threat scoring engine and a dashboard with automated 
+alerts. 
+PULSEPLANNER: APPOINTMENT SCHEDULING SYSTEM - WEB APP Academic Project | 
+Node.js | Express.js | MySQL | EJS | 2024 
+ Led development of a multi-role appointment scheduling system 
+supporting Patient, Doctor, and Admin workflows. 
+ Engineered a robust role-based access control system and managed the 
+MySQL schema. 
+BUS TICKETING SYSTEM - DESKTOP APPLICATION Academic Project | Java | MySQL | 
+Thermal Printer Integration | 2023 
+ Developed a desktop application for bus ticketing and fare management. 
+ Implemented automated discount categories and thermal printer 
+integration. 
+ACTIVITIES 
+ Wadhwani Foundation: Job Ready: Employability Skills – Mar 2026 
+ Open Talk Series #3: "AI and Research" - PhinmaUI, Oct 2023 
+ "Comic Conundrum: A Summit in the Art of Comics" - PhinmaUI, Apr 2023 
+Porras, 
+Joshua Hanpil V. 
+Information Technology Graduate 
+Technical Support & Solutions Engineering 
+  
+CONTACT INFORMATION 
+ 
+ +63919 399 3852 
+ joshinfotech48@gmail.com 
+ www.linkedin.com/in/joshua- 
+valencia-porras-b1b65238a/ 
+ 
+PORTFOLIO 
+ 
+ https://jporrasui.jobs180.com/     
+ https://github.com/Nazonokage 
+ 
+ 
+CORE COMPETENCIES: 
+ 
+ Network Configuration 
+ Troubleshooting 
+ Technical Support 
+ Linux Administration 
+ Infrastructure Deployment 
+ Cybersecurity Operations 
+ Project Coordination 
+ Network Security Fundamentals 
+ Vulnerability Assessment 
+ Hardware Diagnostics 
+ Windows Administration 
+ Incident Management 
+ Front-end Development  
+ Secure Software Engineering 
+ TCP/IP  
+ 
+ 
+PROGRAMMING LANGUAGES 
+ JavaScript  
+ Python  
+ Dart  
+ PHP  
+ Java  
+ SQL  
+ HTML5  
+ CSS3  
+ PowerShell 
+FRAMEWORKS/LIBRARIES:  
+ 
+ Node.js (Express, EJS, Electron, 
+React) 
+ Django 
+ Flask 
+ Flutter 
+ Tailwind CSS 
+ Bootstrap 
+ 
+DATABASES AND TOOLS: 
+ 
+ MySQL (XAMPP/WAMP) 
+ Git 
+ REST APIs 
+ JSON 
+ PowerShell & Python Scripting 

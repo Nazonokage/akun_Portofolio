@@ -1,0 +1,299 @@
+# Career Assessment Report
+
+## Background
+
+* BSIT Graduate
+* Has built multiple projects, including independent work and taking major responsibility in group projects.
+* Self-assessed skills:
+
+  * Windows Troubleshooting: 8/10
+  * Networking: 7/10
+  * Linux: 7/10
+  * Web Development: 8/10
+  * Databases: 8/10
+  * Git/GitHub: 7/10
+
+---
+
+# Personality & Work Style Analysis
+
+## Strong Indicators
+
+### Systems Thinking
+
+Shows consistent interest in understanding how different components connect together rather than focusing on isolated technical tasks.
+
+Examples:
+
+* Enjoys connecting frontend, backend, database, and deployment.
+* Values complete solutions over individual features.
+* Thinks diagnostically when solving problems.
+
+### Troubleshooting Mindset
+
+Frequently prefers:
+
+* Fixing issues
+* Investigating root causes
+* Gathering information before acting
+
+Shows characteristics commonly found in:
+
+* Network Engineers
+* Systems Administrators
+* Solutions Engineers
+* Technical Consultants
+
+### Communication Ability
+
+Demonstrated ability to explain technical concepts using analogies and simplified language.
+
+Shows potential for:
+
+* Consulting
+* Leadership
+* Technical Support
+* Client-facing technical roles
+
+### Leadership Potential
+
+Frequently selected:
+
+* Team coordination
+* Organization
+* Project leadership
+* Responsibility for outcomes
+
+Appears comfortable being accountable for results rather than focusing solely on technical execution.
+
+---
+
+# Motivational Drivers
+
+Most Enjoyable:
+
+1. Connecting systems together
+2. Designing user-facing experiences
+3. Seeing people use completed solutions
+
+Less Motivated By:
+
+* Pure coding
+* Mathematical work
+* Research-heavy tasks
+* Hyper-specialized engineering
+
+---
+
+# Career Archetype
+
+Primary Archetype:
+Technical Problem Solver
+
+Secondary Archetype:
+Systems Integrator
+
+Future Archetype:
+Technical Leader / Architect
+
+---
+
+# Recommended Career Paths
+
+## Tier 1 – Best Current Fit
+
+### Network Engineer
+
+Strengths aligned:
+
+* Troubleshooting
+* Infrastructure
+* Communication
+* Systems thinking
+
+### Systems Administrator
+
+Strengths aligned:
+
+* Reliability
+* Root cause analysis
+* Operational awareness
+
+### Solutions Engineer
+
+Strengths aligned:
+
+* Connecting technologies
+* Understanding business requirements
+* Delivering end-to-end solutions
+
+### Cloud Engineer
+
+Strengths aligned:
+
+* Infrastructure
+* Integration
+* Scalability
+* Modern systems architecture
+
+### Technical Support Engineer
+
+Strengths aligned:
+
+* User communication
+* Problem solving
+* Technical understanding
+
+---
+
+## Tier 2 – Long-Term Growth
+
+### Solutions Architect
+
+Potentially strongest long-term fit.
+
+Reasons:
+
+* Big-picture thinking
+* System integration mindset
+* Communication skills
+* Technical foundation
+
+### Infrastructure Architect
+
+Combines:
+
+* Networking
+* Systems
+* Cloud
+* Business requirements
+
+### IT Manager
+
+Requires:
+
+* Technical experience first
+* Leadership development
+* Organizational skills
+
+### Technical Consultant
+
+Combines:
+
+* Communication
+* Technical expertise
+* Client interaction
+
+---
+
+# Lower Priority Career Paths
+
+### Pure Frontend Developer
+
+Can perform the role but lacks strong evidence of long-term enthusiasm for UI-focused work.
+
+### Pure Backend Developer
+
+Can succeed technically but motivations do not strongly align with deep software specialization.
+
+### Data Analyst
+
+Limited interest shown in data-focused work.
+
+### Data Scientist
+
+Mathematics and research requirements do not align strongly with stated interests.
+
+---
+
+# Key Strengths
+
+* Troubleshooting
+* Adaptability
+* Communication
+* System-wide thinking
+* Leadership potential
+* Technical breadth
+* Practical problem solving
+
+---
+
+# Areas to Improve
+
+### Consistency
+
+Biggest likely obstacle to growth.
+
+Focus:
+
+* Daily study habit
+* Long-term project completion
+* Avoiding loss of momentum
+
+### Technical Depth
+
+Current profile resembles a strong generalist.
+
+Recommended next step:
+Develop depth in one area:
+
+* Networking
+* Linux
+* Cloud Infrastructure
+
+### Confidence Calibration
+
+Tendency to compare against specialists may lead to underestimating overall capability.
+
+Reminder:
+Generalists often become architects, consultants, and managers because they understand how different domains connect.
+
+---
+
+# Recommended 12-Month Learning Plan
+
+Phase 1:
+
+* Networking Fundamentals
+* DNS
+* TCP/IP
+* Routing
+* Switching
+* Subnetting
+
+Phase 2:
+
+* Linux Administration
+* SSH
+* Permissions
+* Services
+* System Management
+
+Phase 3:
+
+* Cloud Fundamentals
+* AWS Cloud Practitioner
+* Cloud Infrastructure Concepts
+
+Phase 4:
+Build Complete Systems
+
+Examples:
+
+* Inventory System
+* Ticketing System
+* Monitoring Dashboard
+* Business Management Platform
+
+Goal:
+Demonstrate ability to integrate technologies into real-world solutions.
+
+---
+
+# Final Assessment
+
+This profile is not best described as a software developer.
+
+It is best described as:
+
+"A systems-oriented problem solver who enjoys connecting technologies, fixing complex issues, communicating solutions, and delivering outcomes. Long-term potential appears strongest in Solutions Engineering, Network Engineering, Cloud Infrastructure, Architecture, Consulting, or Technical Leadership."
