@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/physics.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 
 void main() => runApp(const TacticBoardApp());
@@ -26,6 +25,19 @@ const _morphCurve = Cubic(0.16, 1.0, 0.3, 1.0);
 const _snapCurve = Cubic(0.22, 1.0, 0.36, 1.0);
 
 double _lerp(double a, double b, double t) => a + (b - a) * t;
+
+/// Builds and lays out a single-line [TextPainter]. Shared by every canvas
+/// painter below to avoid repeating the same TextSpan/layout boilerplate.
+TextPainter _layoutText(String text, TextStyle style) => TextPainter(
+  text: TextSpan(text: text, style: style),
+  textDirection: TextDirection.ltr,
+)..layout();
+
+/// Lays out and immediately paints [text] at [offset] — for one-off canvas
+/// labels that don't need to be cached across frames.
+void _paintText(Canvas canvas, String text, TextStyle style, Offset offset) {
+  _layoutText(text, style).paint(canvas, offset);
+}
 
 // ─── Formation Detection ──────────────────────────────────────────────────
 class FormationAnalyzer {
@@ -132,10 +144,10 @@ const _jerseyNumbers = [1, 2, 3, 4, 5, 6, 8, 7, 10, 11, 9];
 
 final _defaultPositions = [
   (w, h) => Offset(w * 0.07, h / 2),
-  (w, h) => Offset(w * 0.21, h * 0.14),
+  (w, h) => Offset(w * 0.21, h * 0.10), // RB
   (w, h) => Offset(w * 0.21, h * 0.38),
   (w, h) => Offset(w * 0.21, h * 0.62),
-  (w, h) => Offset(w * 0.21, h * 0.86),
+  (w, h) => Offset(w * 0.21, h * 0.90), // LB
   (w, h) => Offset(w * 0.36, h * 0.38),
   (w, h) => Offset(w * 0.36, h * 0.62),
   (w, h) => Offset(w * 0.50, h * 0.22),
@@ -169,6 +181,7 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
   final ScrollController _scroll = ScrollController();
   double _scrollProgress = 0;
   double _rawOffset = 0;
+  final ValueNotifier<bool> _editModeNotifier = ValueNotifier<bool>(false);
 
   late final AnimationController _ghostCtrl, _auroraCtrl, _entryCtrl;
   final ValueNotifier<String> _formationNotifier = ValueNotifier<String>(
@@ -215,6 +228,7 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
     _auroraCtrl.dispose();
     _entryCtrl.dispose();
     _formationNotifier.dispose();
+    _editModeNotifier.dispose();
     super.dispose();
   }
 
@@ -314,10 +328,16 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
           ),
           // Main scrollable content
           SafeArea(
-            child: SingleChildScrollView(
-              controller: _scroll,
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
+            child: ValueListenableBuilder<bool>(
+              valueListenable: _editModeNotifier,
+              builder: (_, isEditing, child) => SingleChildScrollView(
+                controller: _scroll,
+                physics: isEditing
+                    ? const NeverScrollableScrollPhysics()
+                    : const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics(),
+                      ),
+                child: child,
               ),
               child: AnimatedBuilder(
                 animation: _entryCtrl,
@@ -340,6 +360,7 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
                     _HeroSection(
                       scrollProgress: _scrollProgress,
                       formationNotifier: _formationNotifier,
+                      editModeNotifier: _editModeNotifier,
                     ),
                     _InfoSection(scrollOffset: _rawOffset),
                   ],
@@ -698,6 +719,9 @@ class _BracketPainter extends CustomPainter {
   bool shouldRepaint(_BracketPainter old) => false;
 }
 
+// Cache for ghost board's smaller jersey number painters
+final _cachedGhostJerseyPainters = <int, TextPainter>{};
+
 // ─── Ghost Pitch Painter ──────────────────────────────────────────────────
 class _GhostPitchPainter extends CustomPainter {
   final double pulse;
@@ -789,17 +813,18 @@ class _GhostPitchPainter extends CustomPainter {
       Paint()..color = color.withValues(alpha: 0.14 + p * 0.10),
     );
     canvas.drawCircle(pos, r, Paint()..color = color.withValues(alpha: 0.92));
-    final np = TextPainter(
-      text: TextSpan(
-        text: '$num',
-        style: const TextStyle(
+    // Use a separate cache for the ghost board's smaller font size (5.5 vs 8.5)
+    final np = _cachedGhostJerseyPainters.putIfAbsent(
+      num,
+      () => _layoutText(
+        '$num',
+        const TextStyle(
           color: AppColors.background,
           fontSize: 5.5,
           fontWeight: FontWeight.w900,
         ),
       ),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    );
     np.paint(canvas, Offset(pos.dx - np.width / 2, pos.dy - np.height / 2));
   }
 
@@ -862,6 +887,7 @@ class _SpaceParticlesState extends State<_SpaceParticles>
   Duration _lastTime = Duration.zero;
   final _rng = math.Random();
   static const _count = 32;
+  late final _ParticleNotifier _notifier;
 
   static const _particleColors = [
     AppColors.neonGlow,
@@ -875,6 +901,7 @@ class _SpaceParticlesState extends State<_SpaceParticles>
   @override
   void initState() {
     super.initState();
+    _notifier = _ParticleNotifier();
     _particles.addAll(List.generate(_count, (_) => _spawn(randomAge: true)));
     _ticker = createTicker(_tick)..start();
   }
@@ -937,25 +964,33 @@ class _SpaceParticlesState extends State<_SpaceParticles>
       if (p.y > 1.15) p.y = -0.15;
       p.angle += p.angleVel * dt;
     }
-    setState(() {});
+    _notifier.notify();
   }
 
   @override
   void dispose() {
     _ticker.dispose();
+    _notifier.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => CustomPaint(
-    painter: _ParticlePainter(particles: List.unmodifiable(_particles)),
+    painter: _ParticlePainter(particles: _particles, repaint: _notifier),
     child: const SizedBox.expand(),
   );
 }
 
+class _ParticleNotifier extends ChangeNotifier {
+  void notify() => notifyListeners();
+}
+
 class _ParticlePainter extends CustomPainter {
   final List<_Particle> particles;
-  const _ParticlePainter({required this.particles});
+  const _ParticlePainter({
+    required this.particles,
+    required ChangeNotifier repaint,
+  }) : super(repaint: repaint);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1049,7 +1084,7 @@ class _ParticlePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ParticlePainter old) => true;
+  bool shouldRepaint(_ParticlePainter old) => false; // repaint driven by ChangeNotifier
 }
 
 // ─── Morphing Background ──────────────────────────────────────────────────
@@ -1238,9 +1273,11 @@ class _ScanLinePainter extends CustomPainter {
 class _HeroSection extends StatefulWidget {
   final double scrollProgress;
   final ValueNotifier<String> formationNotifier;
+  final ValueNotifier<bool> editModeNotifier;
   const _HeroSection({
     required this.scrollProgress,
     required this.formationNotifier,
+    required this.editModeNotifier,
   });
 
   @override
@@ -1262,7 +1299,12 @@ class _HeroSectionState extends State<_HeroSection> {
 
   @override
   Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width > 700;
+    final mq = MediaQuery.of(context);
+    final screenWidth = mq.size.width;
+    final screenHeight = mq.size.height;
+    final isLandscape = screenWidth > screenHeight;
+    // Wide = tablet/desktop portrait or any landscape >= 600
+    final isWide = screenWidth > 700 || (isLandscape && screenWidth > 500);
     final boardT = _snapCurve.transform(
       (widget.scrollProgress / 0.6).clamp(0.0, 1.0),
     );
@@ -1271,18 +1313,33 @@ class _HeroSectionState extends State<_HeroSection> {
     );
 
     Widget board = Opacity(
-      opacity: (1.0 - boardT * 0.7).clamp(0.0, 1.0),
-      child: Transform(
-        alignment: Alignment.center,
-        transform: Matrix4.identity()
-          ..setEntry(3, 2, 0.0009)
-          ..translateByDouble(0.0, boardT * -28.0, 0.0, 1.0)
-          ..rotateX(boardT * 36.0 * math.pi / 180)
-          ..scaleByDouble(1.0 - boardT * 0.13, 1.0 - boardT * 0.13, 1.0, 1.0),
-        child: Center(
-          child: FloatingTacticBoard(onFormationChanged: _onFormationChanged),
-        ),
-      ),
+      opacity: isLandscape ? 1.0 : (1.0 - boardT * 0.7).clamp(0.0, 1.0),
+      child: isLandscape
+          ? Center(
+              child: FloatingTacticBoard(
+                onFormationChanged: _onFormationChanged,
+                editModeNotifier: widget.editModeNotifier,
+              ),
+            )
+          : Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.0009)
+                ..translateByDouble(0.0, boardT * -28.0, 0.0, 1.0)
+                ..rotateX(boardT * 36.0 * math.pi / 180)
+                ..scaleByDouble(
+                  1.0 - boardT * 0.13,
+                  1.0 - boardT * 0.13,
+                  1.0,
+                  1.0,
+                ),
+              child: Center(
+                child: FloatingTacticBoard(
+                  onFormationChanged: _onFormationChanged,
+                  editModeNotifier: widget.editModeNotifier,
+                ),
+              ),
+            ),
     );
 
     Widget stats = Opacity(
@@ -1558,11 +1615,17 @@ class _InfoCardState extends State<_InfoCard>
     super.dispose();
   }
 
+  void _onTap() {
+    _hover.stop();
+    _hover.value = 0.0;
+    _hover.forward().then((_) {
+      if (mounted) _hover.reverse();
+    });
+  }
+
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTapDown: (_) => _hover.forward(),
-    onTapUp: (_) => _hover.reverse(),
-    onTapCancel: () => _hover.reverse(),
+    onTap: _onTap,
     child: MouseRegion(
       onEnter: (_) => _hover.forward(),
       onExit: (_) => _hover.reverse(),
@@ -1657,6 +1720,20 @@ class _InfoCardState extends State<_InfoCard>
                           ],
                         ),
                         const SizedBox(height: 10),
+                        Container(
+                          height: 1.0,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                widget.accentColor.withValues(alpha: 0.5),
+                                widget.accentColor.withValues(alpha: 0.08),
+                                Colors.transparent,
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
                         Text(
                           widget.body,
                           style: TextStyle(
@@ -1665,6 +1742,20 @@ class _InfoCardState extends State<_InfoCard>
                               alpha: 0.58 + t * 0.18,
                             ),
                             height: 1.68,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          height: 1.0,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.transparent,
+                                widget.accentColor.withValues(alpha: 0.08),
+                                widget.accentColor.withValues(alpha: 0.5),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(2),
                           ),
                         ),
                         SizeTransition(
@@ -1792,40 +1883,51 @@ class _AnimatedStatItemState extends State<_AnimatedStatItem>
     super.dispose();
   }
 
+  void _onTap() {
+    _ctrl.forward().then((_) {
+      Future.delayed(const Duration(milliseconds: 180), () {
+        if (mounted) _ctrl.reverse();
+      });
+    });
+  }
+
   @override
-  Widget build(BuildContext context) => MouseRegion(
-    onEnter: (_) => _ctrl.forward(),
-    onExit: (_) => _ctrl.reverse(),
-    child: AnimatedBuilder(
-      animation: _t,
-      builder: (_, __) => Transform.translate(
-        offset: Offset(0, -5 * _t.value),
-        child: Column(
-          children: [
-            Text(
-              widget.value,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-                color: Color.lerp(
-                  AppColors.neonGlow,
-                  AppColors.hologram,
-                  _t.value,
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: _onTap,
+    child: MouseRegion(
+      onEnter: (_) => _ctrl.forward(),
+      onExit: (_) => _ctrl.reverse(),
+      child: AnimatedBuilder(
+        animation: _t,
+        builder: (_, __) => Transform.translate(
+          offset: Offset(0, -5 * _t.value),
+          child: Column(
+            children: [
+              Text(
+                widget.value,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  color: Color.lerp(
+                    AppColors.neonGlow,
+                    AppColors.hologram,
+                    _t.value,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              widget.label,
-              style: TextStyle(
-                fontSize: 9,
-                color: AppColors.secondaryGlow.withValues(
-                  alpha: 0.5 + _t.value * 0.35,
+              const SizedBox(height: 4),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: AppColors.secondaryGlow.withValues(
+                    alpha: 0.5 + _t.value * 0.35,
+                  ),
+                  letterSpacing: 0.8,
                 ),
-                letterSpacing: 0.8,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     ),
@@ -2011,7 +2113,12 @@ class _TeamScore extends StatelessWidget {
 // ─── Floating Tactic Board ──────────────────────────────────────────────────
 class FloatingTacticBoard extends StatefulWidget {
   final ValueChanged<String>? onFormationChanged;
-  const FloatingTacticBoard({super.key, this.onFormationChanged});
+  final ValueNotifier<bool>? editModeNotifier;
+  const FloatingTacticBoard({
+    super.key,
+    this.onFormationChanged,
+    this.editModeNotifier,
+  });
 
   @override
   State<FloatingTacticBoard> createState() => _FloatingTacticBoardState();
@@ -2019,28 +2126,13 @@ class FloatingTacticBoard extends StatefulWidget {
 
 class _FloatingTacticBoardState extends State<FloatingTacticBoard>
     with TickerProviderStateMixin {
-  late final AnimationController _levitate,
-      _pulse,
-      _springCtrl,
-      _formAnim,
-      _passAnim;
-  double _tiltX = 0, _tiltY = 0, _targetTiltX = 0, _targetTiltY = 0;
-  late SpringSimulation _springX, _springY;
-  bool _springing = false,
-      _dragMode = false,
-      _showHeatmap = false,
-      _expanded = false;
+  late final AnimationController _levitate, _pulse, _formAnim, _passAnim;
+  bool _dragMode = false, _showHeatmap = false, _expanded = false;
   int? _selectedPlayer;
   List<Offset?> _customPositions = List.filled(11, null);
   List<List<Offset?>> _history = [];
   int _historyIndex = -1;
   String _currentFormation = "4-2-3-1";
-
-  static const _spring = SpringDescription(
-    mass: 1,
-    stiffness: 200,
-    damping: 22,
-  );
 
   @override
   void initState() {
@@ -2053,7 +2145,6 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
       vsync: this,
       duration: const Duration(milliseconds: 2200),
     )..repeat(reverse: true);
-    _springCtrl = AnimationController.unbounded(vsync: this);
     _formAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 550),
@@ -2062,38 +2153,16 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
       vsync: this,
       duration: const Duration(milliseconds: 8000),
     )..repeat();
-    _springCtrl.addListener(_onSpringTick);
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _notifyFormationChanged(),
-    );
-  }
-
-  void _onSpringTick() {
-    if (!_springing) return;
-    final e = _springCtrl.value;
-    _springX = SpringSimulation(_spring, _targetTiltX, 0, 0);
-    _springY = SpringSimulation(_spring, _targetTiltY, 0, 0);
-    final x = _springX.x(e);
-    final y = _springY.x(e);
-    setState(() {
-      _tiltX = x;
-      _tiltY = y;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _recomputeFormation();
+      _notifyFormationChanged();
     });
-    if (x.abs() < 0.05 && y.abs() < 0.05) {
-      _springing = false;
-      _springCtrl.stop();
-      setState(() {
-        _tiltX = 0;
-        _tiltY = 0;
-      });
-    }
   }
 
   @override
   void dispose() {
     _levitate.dispose();
     _pulse.dispose();
-    _springCtrl.dispose();
     _formAnim.dispose();
     _passAnim.dispose();
     super.dispose();
@@ -2129,38 +2198,15 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
   }
 
   void _notifyFormationChanged() {
-    final f = _formationString;
+    _recomputeFormation();
+    final f = _cachedFormation;
     if (_currentFormation != f) {
       _currentFormation = f;
       widget.onFormationChanged?.call(f);
     }
   }
 
-  void _onPanUpdate(DragUpdateDetails d, Size size) {
-    if (_dragMode) return;
-    _springing = false;
-    _springCtrl.stop();
-    setState(() {
-      _tiltY = (_tiltY + d.delta.dx / size.width * 42).clamp(-24.0, 24.0);
-      _tiltX = (_tiltX - d.delta.dy / size.height * 32).clamp(-20.0, 20.0);
-    });
-  }
-
-  void _onPanEnd(DragEndDetails _) {
-    if (_dragMode) return;
-    _targetTiltX = _tiltX;
-    _targetTiltY = _tiltY;
-    _springing = true;
-    _springCtrl.value = 0;
-    _springCtrl.animateTo(
-      1.5,
-      duration: const Duration(milliseconds: 950),
-      curve: Curves.linear,
-    );
-  }
-
   void _onPlayerTapped(int? index) {
-    if (_dragMode) return;
     setState(() => _selectedPlayer = (_selectedPlayer == index) ? null : index);
   }
 
@@ -2170,10 +2216,21 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
       if (_dragMode) _pushHistory();
       _selectedPlayer = null;
     });
+    widget.editModeNotifier?.value = _dragMode;
   }
 
   void _toggleHeatmap() => setState(() => _showHeatmap = !_showHeatmap);
-  void _toggleExpand() => setState(() => _expanded = !_expanded);
+  void _toggleExpand() {
+    setState(() {
+      _expanded = !_expanded;
+      // Exiting fullscreen also exits edit mode
+      if (!_expanded && _dragMode) {
+        _dragMode = false;
+        _selectedPlayer = null;
+      }
+    });
+    widget.editModeNotifier?.value = _dragMode;
+  }
 
   void _onPlayerDragged(int index, Offset newPos) {
     if (index == 0) return;
@@ -2183,24 +2240,22 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
     });
   }
 
-  String get _formationString {
+  String _cachedFormation = "4-2-3-1";
+
+  String get _formationString => _cachedFormation;
+
+  void _recomputeFormation() {
     const pitchW = 308.0;
     const pitchH = 224.0;
     final positions = List.generate(
       11,
       (i) => _customPositions[i] ?? _defaultPositions[i](pitchW, pitchH),
     );
-    return FormationAnalyzer.detect(positions, pitchW);
+    _cachedFormation = FormationAnalyzer.detect(positions, pitchW);
   }
 
-  Widget _buildBoardContent(Size screenSize) => GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onDoubleTap: _toggleDragMode,
-    onPanUpdate: _dragMode ? null : (d) => _onPanUpdate(d, screenSize),
-    onPanEnd: _dragMode ? null : _onPanEnd,
-    child: _TiltCard(
-      tiltX: _dragMode ? 0 : _tiltX,
-      tiltY: _dragMode ? 0 : _tiltY,
+  Widget _buildBoardContent(Size screenSize, {bool rotateNumbers = false}) {
+    return _TiltCard(
       pulseAnim: _pulse,
       passAnim: _passAnim,
       selectedPlayer: _selectedPlayer,
@@ -2210,105 +2265,204 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
       onPlayerDragged: _onPlayerDragged,
       showHeatmap: _showHeatmap,
       formationString: _formationString,
-    ),
-  );
+      rotateNumbers: rotateNumbers,
+      screenSize: screenSize,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    final scale = math
-        .min((screenSize.width - 48) / 336, (screenSize.height - 80) / 252)
-        .clamp(0.8, 2.0);
+    final isLandscape = screenSize.width > screenSize.height;
+    final isMobileLandscape = isLandscape && screenSize.height < 500;
 
-    return Stack(
-      children: [
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const _ScoreTicker(),
-            const SizedBox(height: 16),
-            _PulsingLabel(
-              label: _dragMode
-                  ? 'DRAG MODE  ·  MOVE PLAYERS  (GK LOCKED)'
-                  : 'DRAG  ·  TILT  ·  TAP  ·  DBL-TAP TO EDIT',
-            ),
-            const SizedBox(height: 18),
-            AnimatedBuilder(
-              animation: Listenable.merge([_levitate, _formAnim]),
-              builder: (_, child) => Transform.translate(
-                offset: Offset(0, math.sin(_levitate.value * math.pi) * -18),
-                child: Transform.scale(
+    // In landscape mobile, use a compact horizontal layout
+    if (isMobileLandscape) {
+      return Stack(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Board
+              AnimatedBuilder(
+                animation: _formAnim,
+                builder: (_, child) => Transform.scale(
                   scale: 1.0 - _formAnim.value * 0.02,
                   child: child,
                 ),
+                child: _buildBoardContent(screenSize),
               ),
-              child: _buildBoardContent(screenSize),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _ReadoutChip(label: 'TILT X', value: '${_tiltX.round()}°'),
-                const SizedBox(width: 28),
-                _ReadoutChip(label: 'TILT Y', value: '${_tiltY.round()}°'),
-                const SizedBox(width: 28),
-                _ReadoutChip(label: 'FORMATION', value: _formationString),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _iconBtn(
-                  _dragMode ? Icons.edit_off : Icons.edit,
-                  _dragMode ? AppColors.accent3 : AppColors.neonGlow,
-                  _toggleDragMode,
-                  'Edit Mode',
-                ),
-                _iconBtn(
-                  _showHeatmap ? Icons.grid_on : Icons.grid_off,
-                  _showHeatmap ? AppColors.gold : AppColors.secondaryGlow,
-                  _toggleHeatmap,
-                  'Heatmap',
-                ),
-                _iconBtn(
-                  _expanded ? Icons.fullscreen_exit : Icons.fullscreen,
-                  _expanded ? AppColors.gold : AppColors.neonGlow,
-                  _toggleExpand,
-                  _expanded ? 'Close fullscreen' : 'Expand',
-                ),
-                if (_dragMode) ...[
-                  _iconBtn(
-                    Icons.undo,
-                    AppColors.neonGlow,
-                    _historyIndex > 0 ? _undo : null,
-                    'Undo',
+              const SizedBox(width: 12),
+              // Controls column on the right
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _PulsingLabel(
+                    label: _dragMode ? 'DRAG MODE' : 'TAP TO SELECT',
                   ),
-                  _iconBtn(
-                    Icons.redo,
-                    AppColors.neonGlow,
-                    _historyIndex < _history.length - 1 ? _redo : null,
-                    'Redo',
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ReadoutChip(label: 'FMT', value: _formationString),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 0,
+                    children: [
+                      _iconBtn(
+                        _dragMode ? Icons.edit_off : Icons.edit,
+                        _dragMode ? AppColors.accent3 : AppColors.neonGlow,
+                        _toggleDragMode,
+                        'Edit Mode',
+                      ),
+                      _iconBtn(
+                        _showHeatmap ? Icons.grid_on : Icons.grid_off,
+                        _showHeatmap ? AppColors.gold : AppColors.secondaryGlow,
+                        _toggleHeatmap,
+                        'Heatmap',
+                      ),
+                      _iconBtn(
+                        _expanded ? Icons.fullscreen_exit : Icons.fullscreen,
+                        _expanded ? AppColors.gold : AppColors.neonGlow,
+                        _toggleExpand,
+                        _expanded ? 'Close fullscreen' : 'Expand',
+                      ),
+                      if (_dragMode) ...[
+                        _iconBtn(
+                          Icons.undo,
+                          AppColors.neonGlow,
+                          _historyIndex > 0 ? _undo : null,
+                          'Undo',
+                        ),
+                        _iconBtn(
+                          Icons.redo,
+                          AppColors.neonGlow,
+                          _historyIndex < _history.length - 1 ? _redo : null,
+                          'Redo',
+                        ),
+                      ],
+                    ],
                   ),
                 ],
-              ],
+              ),
+            ],
+          ),
+          if (_expanded)
+            _FullscreenOverlay(
+              isMobile: screenSize.shortestSide < 600,
+              onClose: _toggleExpand,
+              dragMode: _dragMode,
+              onToggleEdit: _toggleDragMode,
+              historyIndex: _historyIndex,
+              historyLength: _history.length,
+              onUndo: _historyIndex > 0 ? _undo : null,
+              onRedo: _historyIndex < _history.length - 1 ? _redo : null,
+              child: _buildBoardContent(
+                screenSize,
+                rotateNumbers: screenSize.shortestSide < 600,
+              ),
             ),
-            const SizedBox(height: 16),
+        ],
+      );
+    }
+
+    // Portrait / desktop layout
+    final boardColumn = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const _ScoreTicker(),
+        const SizedBox(height: 16),
+        _PulsingLabel(
+          label: _dragMode
+              ? 'DRAG MODE  ·  MOVE PLAYERS  (GK LOCKED)'
+              : 'DRAG  ·  TILT  ·  TAP  TO  SELECT',
+        ),
+        const SizedBox(height: 18),
+        AnimatedBuilder(
+          animation: Listenable.merge([_levitate, _formAnim]),
+          builder: (_, child) => Transform.translate(
+            offset: Offset(0, math.sin(_levitate.value * math.pi) * -18),
+            child: Transform.scale(
+              scale: 1.0 - _formAnim.value * 0.02,
+              child: child,
+            ),
+          ),
+          child: _buildBoardContent(screenSize),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const _ReadoutChip(label: 'TILT X', value: '0°'),
+            const SizedBox(width: 28),
+            const _ReadoutChip(label: 'TILT Y', value: '0°'),
+            const SizedBox(width: 28),
+            _ReadoutChip(label: 'FORMATION', value: _formationString),
           ],
         ),
-        if (_expanded)
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: _toggleExpand,
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.7),
-                child: Center(
-                  child: Transform.scale(
-                    scale: scale,
-                    child: _buildBoardContent(screenSize),
-                  ),
-                ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _iconBtn(
+              _dragMode ? Icons.edit_off : Icons.edit,
+              _dragMode ? AppColors.accent3 : AppColors.neonGlow,
+              _toggleDragMode,
+              'Edit Mode',
+            ),
+            _iconBtn(
+              _showHeatmap ? Icons.grid_on : Icons.grid_off,
+              _showHeatmap ? AppColors.gold : AppColors.secondaryGlow,
+              _toggleHeatmap,
+              'Heatmap',
+            ),
+            _iconBtn(
+              _expanded ? Icons.fullscreen_exit : Icons.fullscreen,
+              _expanded ? AppColors.gold : AppColors.neonGlow,
+              _toggleExpand,
+              _expanded ? 'Close fullscreen' : 'Expand',
+            ),
+            if (_dragMode) ...[
+              _iconBtn(
+                Icons.undo,
+                AppColors.neonGlow,
+                _historyIndex > 0 ? _undo : null,
+                'Undo',
               ),
+              _iconBtn(
+                Icons.redo,
+                AppColors.neonGlow,
+                _historyIndex < _history.length - 1 ? _redo : null,
+                'Redo',
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+
+    return Stack(
+      children: [
+        boardColumn,
+        if (_expanded)
+          _FullscreenOverlay(
+            isMobile: screenSize.shortestSide < 600,
+            onClose: _toggleExpand,
+            dragMode: _dragMode,
+            onToggleEdit: _toggleDragMode,
+            historyIndex: _historyIndex,
+            historyLength: _history.length,
+            onUndo: _historyIndex > 0 ? _undo : null,
+            onRedo: _historyIndex < _history.length - 1 ? _redo : null,
+            child: _buildBoardContent(
+              screenSize,
+              rotateNumbers: screenSize.shortestSide < 600,
             ),
           ),
       ],
@@ -2324,6 +2478,332 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
     icon: Icon(icon, color: color, size: 20),
     onPressed: onPressed,
     tooltip: tooltip,
+  );
+}
+
+// ─── Fullscreen Overlay ──────────────────────────────────────────────────────
+class _FullscreenOverlay extends StatelessWidget {
+  final Widget child;
+  final VoidCallback onClose;
+  final bool isMobile;
+  final bool dragMode;
+  final VoidCallback onToggleEdit;
+  final int historyIndex;
+  final int historyLength;
+  final VoidCallback? onUndo;
+  final VoidCallback? onRedo;
+
+  const _FullscreenOverlay({
+    required this.child,
+    required this.onClose,
+    required this.isMobile,
+    required this.dragMode,
+    required this.onToggleEdit,
+    required this.historyIndex,
+    required this.historyLength,
+    this.onUndo,
+    this.onRedo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context).size;
+    final w = mq.width;
+    final h = mq.height;
+
+    // Board intrinsic size: 336 × 252 (landscape card)
+    const boardW = 336.0;
+    const boardH = 252.0;
+    const padding = 32.0;
+
+    // Use FittedBox instead of Transform.scale so the render-box layout size
+    // matches the visible scaled area.  Transform.scale only paints at the new
+    // size but keeps the original layout box, so hit-testing fires in the
+    // wrong region — tapping RB/LB/GK in fullscreen on mobile never registers.
+    Widget board;
+    if (isMobile) {
+      // Board will be rotated 90° CCW — swap axes so it fills portrait screen.
+      // Constrain to the available portrait space (w × h minus padding).
+      board = SizedBox(
+        width: w - padding * 2,
+        height: h - padding * 2,
+        child: FittedBox(fit: BoxFit.contain, child: child),
+      );
+    } else {
+      board = SizedBox(
+        width: w - padding * 2,
+        height: h - padding * 2,
+        child: FittedBox(fit: BoxFit.contain, child: child),
+      );
+    }
+
+    // On mobile: rotate 90° CCW so the landscape board fills portrait screen.
+    final content = isMobile
+        ? RotatedBox(quarterTurns: 3, child: board)
+        : board;
+
+    return Positioned.fill(
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          color: AppColors.background.withValues(alpha: 0.96),
+          child: Stack(
+            children: [
+              // Subtle grid background inside overlay
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(painter: _OverlayGridPainter()),
+                ),
+              ),
+              // Centred board
+              Center(child: content),
+              // Top bar: edit controls (left) + close button (right)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        // Edit mode toggle
+                        _OverlayIconBtn(
+                          icon: dragMode ? Icons.edit_off : Icons.edit,
+                          color: dragMode
+                              ? AppColors.accent3
+                              : AppColors.neonGlow,
+                          onTap: onToggleEdit,
+                          tooltip: dragMode ? 'Exit Edit Mode' : 'Edit Mode',
+                          active: dragMode,
+                        ),
+                        if (dragMode) ...[
+                          const SizedBox(width: 4),
+                          _OverlayIconBtn(
+                            icon: Icons.undo,
+                            color: onUndo != null
+                                ? AppColors.neonGlow
+                                : AppColors.grid,
+                            onTap: onUndo,
+                            tooltip: 'Undo',
+                          ),
+                          const SizedBox(width: 4),
+                          _OverlayIconBtn(
+                            icon: Icons.redo,
+                            color: onRedo != null
+                                ? AppColors.neonGlow
+                                : AppColors.grid,
+                            onTap: onRedo,
+                            tooltip: 'Redo',
+                          ),
+                        ],
+                        const SizedBox(width: 8),
+                        // Status label
+                        Text(
+                          dragMode
+                              ? 'DRAG PLAYERS  ·  GK LOCKED'
+                              : 'TAP  TO  SELECT',
+                          style: TextStyle(
+                            fontSize: 8,
+                            letterSpacing: 2.5,
+                            color: dragMode
+                                ? AppColors.accent3.withValues(alpha: 0.7)
+                                : AppColors.secondaryGlow.withValues(
+                                    alpha: 0.5,
+                                  ),
+                          ),
+                        ),
+                        const Spacer(),
+                        // Close button
+                        _ExitFullscreenBtn(onTap: onClose),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // Corner brackets decoration
+              Positioned.fill(
+                child: IgnorePointer(child: _OverlayCornerBrackets()),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Overlay Icon Button ────────────────────────────────────────────────────
+class _OverlayIconBtn extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+  final String tooltip;
+  final bool active;
+
+  const _OverlayIconBtn({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    required this.tooltip,
+    this.active = false,
+  });
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: active
+              ? AppColors.accent3.withValues(alpha: 0.15)
+              : AppColors.frame.withValues(alpha: 0.60),
+          border: Border.all(
+            color: color.withValues(alpha: onTap != null ? 0.45 : 0.18),
+            width: 1.2,
+          ),
+        ),
+        child: Icon(
+          icon,
+          color: color.withValues(alpha: onTap != null ? 1.0 : 0.35),
+          size: 18,
+        ),
+      ),
+    ),
+  );
+}
+
+class _OverlayGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.grid.withValues(alpha: 0.06)
+      ..strokeWidth = 0.5;
+    const step = 48.0;
+    for (double x = 0; x < size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y < size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_OverlayGridPainter _) => false;
+}
+
+class _OverlayCornerBrackets extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      for (final a in [
+        const Alignment(-1.0, -1.0),
+        const Alignment(1.0, -1.0),
+        const Alignment(-1.0, 1.0),
+        const Alignment(1.0, 1.0),
+      ])
+        Align(
+          alignment: a,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CustomPaint(
+                painter: _BracketPainter(
+                  a.x < 0,
+                  a.y < 0,
+                  AppColors.neonGlow.withValues(alpha: 0.35),
+                  1.8,
+                ),
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
+}
+
+class _ExitFullscreenBtn extends StatefulWidget {
+  final VoidCallback onTap;
+  const _ExitFullscreenBtn({required this.onTap});
+
+  @override
+  State<_ExitFullscreenBtn> createState() => _ExitFullscreenBtnState();
+}
+
+class _ExitFullscreenBtnState extends State<_ExitFullscreenBtn>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _t;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _t = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTapDown: (_) => _ctrl.forward(),
+    onTapUp: (_) {
+      _ctrl.reverse();
+      widget.onTap();
+    },
+    onTapCancel: () => _ctrl.reverse(),
+    child: MouseRegion(
+      onEnter: (_) => _ctrl.forward(),
+      onExit: (_) => _ctrl.reverse(),
+      child: AnimatedBuilder(
+        animation: _t,
+        builder: (_, __) => Transform.scale(
+          scale: 1.0 + _t.value * 0.12,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.frame.withValues(alpha: 0.72 + _t.value * 0.18),
+              border: Border.all(
+                color: AppColors.neonGlow.withValues(
+                  alpha: 0.25 + _t.value * 0.55,
+                ),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.neonGlow.withValues(alpha: _t.value * 0.25),
+                  blurRadius: 16,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.close_rounded,
+              color: AppColors.neonGlow.withValues(alpha: 0.7 + _t.value * 0.3),
+              size: 20,
+            ),
+          ),
+        ),
+      ),
+    ),
   );
 }
 
@@ -2373,7 +2853,6 @@ class _PulsingLabelState extends State<_PulsingLabel>
 
 // ─── Tilt Card ──────────────────────────────────────────────────────────────
 class _TiltCard extends StatelessWidget {
-  final double tiltX, tiltY;
   final Animation<double> pulseAnim, passAnim;
   final int? selectedPlayer;
   final ValueChanged<int?> onPlayerTapped;
@@ -2382,10 +2861,10 @@ class _TiltCard extends StatelessWidget {
   final void Function(int, Offset) onPlayerDragged;
   final bool showHeatmap;
   final String formationString;
+  final bool rotateNumbers;
+  final Size screenSize;
 
   const _TiltCard({
-    required this.tiltX,
-    required this.tiltY,
     required this.pulseAnim,
     required this.passAnim,
     required this.selectedPlayer,
@@ -2395,177 +2874,118 @@ class _TiltCard extends StatelessWidget {
     required this.onPlayerDragged,
     required this.showHeatmap,
     required this.formationString,
+    this.rotateNumbers = false,
+    required this.screenSize,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final specularX = 0.5 - tiltY / 48.0;
-    final specularY = 0.5 + tiltX / 40.0;
-    final glowX = tiltY.abs() / 24.0;
-    final glowY = tiltX.abs() / 18.0;
-    return Transform(
-      alignment: Alignment.center,
-      transform: Matrix4.identity()
-        ..setEntry(3, 2, 0.0012)
-        ..rotateX(tiltX * math.pi / 180)
-        ..rotateY(tiltY * math.pi / 180),
-      child: Container(
-        width: 336,
-        height: 252,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
-          color: AppColors.frame.withValues(alpha: 0.88),
-          border: Border.all(
-            color: AppColors.neonGlow.withValues(
-              alpha: 0.22 + glowX * 0.18 + glowY * 0.18,
-            ),
-            width: 1.3,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.neonGlow.withValues(alpha: 0.12 + glowX * 0.08),
-              blurRadius: 40,
-              spreadRadius: 3,
-            ),
-            BoxShadow(
-              color: AppColors.teamB.withValues(alpha: 0.04 + glowY * 0.05),
-              blurRadius: 60,
-              spreadRadius: 8,
-            ),
-            BoxShadow(
-              color: AppColors.hologram.withValues(alpha: 0.07),
-              blurRadius: 80,
-              spreadRadius: 16,
-            ),
-          ],
-          gradient: LinearGradient(
-            begin: Alignment(specularX * 2 - 1, specularY * 2 - 1),
-            end: Alignment.bottomRight,
-            colors: [
-              AppColors.neonGlow.withValues(alpha: 0.10 + glowX * 0.06),
-              AppColors.frame.withValues(alpha: 0.92),
-              AppColors.grid.withValues(alpha: 0.28),
-            ],
-          ),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: Stack(
-            children: [
-              _TopGradientLine(alpha: 0.8 + glowX * 0.2),
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: CustomPaint(
-                    painter: _ChromaticPainter(tiltX: tiltX, tiltY: tiltY),
-                  ),
-                ),
-              ),
-              ..._cornerBrackets(
-                AppColors.neonGlow.withValues(
-                  alpha: (0.55 + (glowX + glowY) * 0.3).clamp(0.0, 1.0),
-                ),
-              ),
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: PitchWidget(
-                    pulseAnim: pulseAnim,
-                    passAnim: passAnim,
-                    selectedPlayer: selectedPlayer,
-                    onPlayerTapped: onPlayerTapped,
-                    dragModeEnabled: dragModeEnabled,
-                    customPositions: customPositions,
-                    onPlayerDragged: onPlayerDragged,
-                    showHeatmap: showHeatmap,
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: CustomPaint(
-                    painter: _HoloPainter(
-                      specularX: specularX,
-                      specularY: specularY,
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 12,
-                right: 14,
-                child: Text(
-                  formationString,
-                  style: TextStyle(
-                    fontSize: 8,
-                    letterSpacing: 2.5,
-                    color: AppColors.neonGlow.withValues(alpha: 0.45),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 12,
-                left: 14,
-                child: Text(
-                  'PASS LINES  ON',
-                  style: TextStyle(
-                    fontSize: 7,
-                    letterSpacing: 1.8,
-                    color: AppColors.hologram.withValues(alpha: 0.38),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 12,
-                right: 14,
-                child: Text(
-                  '${tiltX.round()}° ${tiltY.round()}°',
-                  style: TextStyle(
-                    fontSize: 7,
-                    letterSpacing: 1.2,
-                    fontFamily: 'monospace',
-                    color: AppColors.secondaryGlow.withValues(alpha: 0.28),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+  Widget build(BuildContext context) => Container(
+    width: 336,
+    height: 252,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(22),
+      color: AppColors.frame.withValues(alpha: 0.88),
+      border: Border.all(
+        color: AppColors.neonGlow.withValues(alpha: 0.22),
+        width: 1.3,
       ),
-    );
-  }
-}
-
-// ─── Chromatic Aberration ──────────────────────────────────────────────────
-class _ChromaticPainter extends CustomPainter {
-  final double tiltX, tiltY;
-  const _ChromaticPainter({required this.tiltX, required this.tiltY});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final strength = (tiltY.abs() + tiltX.abs()) / 44.0;
-    if (strength < 0.05) return;
-    final alpha = strength * 0.055;
-    final dx = tiltY / 24.0 * 3;
-    final r = Rect.fromLTWH(0, 0, size.width, size.height);
-    canvas.drawRect(
-      Rect.fromLTWH(dx, 0, size.width, size.height),
-      Paint()
-        ..color = const Color(0xFFFF0033).withValues(alpha: alpha)
-        ..blendMode = BlendMode.screen,
-    );
-    canvas.drawRect(
-      Rect.fromLTWH(-dx, 0, size.width, size.height),
-      Paint()
-        ..color = const Color(0xFF00FFEE).withValues(alpha: alpha * 0.7)
-        ..blendMode = BlendMode.screen,
-    );
-    // suppress unused variable warning
-    r.isEmpty;
-  }
-
-  @override
-  bool shouldRepaint(_ChromaticPainter old) =>
-      old.tiltX != tiltX || old.tiltY != tiltY;
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.neonGlow.withValues(alpha: 0.12),
+          blurRadius: 40,
+          spreadRadius: 3,
+        ),
+        BoxShadow(
+          color: AppColors.teamB.withValues(alpha: 0.04),
+          blurRadius: 60,
+          spreadRadius: 8,
+        ),
+        BoxShadow(
+          color: AppColors.hologram.withValues(alpha: 0.07),
+          blurRadius: 80,
+          spreadRadius: 16,
+        ),
+      ],
+      gradient: LinearGradient(
+        begin: const Alignment(0, 0),
+        end: Alignment.bottomRight,
+        colors: [
+          AppColors.neonGlow.withValues(alpha: 0.10),
+          AppColors.frame.withValues(alpha: 0.92),
+          AppColors.grid.withValues(alpha: 0.28),
+        ],
+      ),
+    ),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: Stack(
+        children: [
+          const _TopGradientLine(),
+          ..._cornerBrackets(AppColors.neonGlow.withValues(alpha: 0.55)),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: PitchWidget(
+                pulseAnim: pulseAnim,
+                passAnim: passAnim,
+                selectedPlayer: selectedPlayer,
+                onPlayerTapped: onPlayerTapped,
+                dragModeEnabled: dragModeEnabled,
+                customPositions: customPositions,
+                onPlayerDragged: onPlayerDragged,
+                showHeatmap: showHeatmap,
+                rotateNumbers: rotateNumbers,
+              ),
+            ),
+          ),
+          const Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _HoloPainter(specularX: 0.5, specularY: 0.5),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 12,
+            right: 14,
+            child: Text(
+              formationString,
+              style: TextStyle(
+                fontSize: 8,
+                letterSpacing: 2.5,
+                color: AppColors.neonGlow.withValues(alpha: 0.45),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 12,
+            left: 14,
+            child: Text(
+              'PASS LINES  ON',
+              style: TextStyle(
+                fontSize: 7,
+                letterSpacing: 1.8,
+                color: AppColors.hologram.withValues(alpha: 0.38),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 12,
+            right: 14,
+            child: Text(
+              '0° 0°',
+              style: TextStyle(
+                fontSize: 7,
+                letterSpacing: 1.2,
+                fontFamily: 'monospace',
+                color: AppColors.secondaryGlow.withValues(alpha: 0.28),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 // ─── Holo Painter ───────────────────────────────────────────────────────────
@@ -2611,6 +3031,7 @@ class PitchWidget extends StatefulWidget {
   final List<Offset?> customPositions;
   final void Function(int, Offset) onPlayerDragged;
   final bool showHeatmap;
+  final bool rotateNumbers;
 
   const PitchWidget({
     super.key,
@@ -2622,6 +3043,7 @@ class PitchWidget extends StatefulWidget {
     required this.customPositions,
     required this.onPlayerDragged,
     required this.showHeatmap,
+    this.rotateNumbers = false,
   });
 
   @override
@@ -2630,76 +3052,146 @@ class PitchWidget extends StatefulWidget {
 
 class _PitchWidgetState extends State<PitchWidget> {
   int? _draggingPlayer;
+  // These MUST live in state — NOT inside the AnimatedBuilder callback.
+  // The builder runs every animation frame (~16 ms), so any local variable
+  // declared inside it gets reset before onPointerUp fires, silently
+  // swallowing taps on every player (most visible for GK, RB, LB).
+  int? _pendingTapHit;
+  Offset? _downPos;
 
   List<Offset> _getPositions() => List.generate(
     11,
     (i) => widget.customPositions[i] ?? _defaultPositions[i](308.0, 224.0),
   );
 
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: Listenable.merge([widget.pulseAnim, widget.passAnim]),
-    builder: (_, __) {
-      final painter = _PitchPainter(
-        pulse: widget.pulseAnim.value,
-        passT: widget.passAnim.value,
-        selectedPlayer: widget.selectedPlayer,
-        customPositions: widget.customPositions,
-        dragModeEnabled: widget.dragModeEnabled,
-        draggingPlayer: _draggingPlayer,
-        showHeatmap: widget.showHeatmap,
-      );
-      if (widget.dragModeEnabled) {
-        return GestureDetector(
-          onPanStart: (d) {
-            const threshold = 18.0;
-            final positions = _getPositions();
-            double bestDist = threshold;
-            int? hit;
-            for (int i = 0; i < positions.length; i++) {
-              final dist = (d.localPosition - positions[i]).distance;
-              if (dist < bestDist) {
-                bestDist = dist;
-                hit = i;
-              }
-            }
-            if (hit != null && hit != 0) setState(() => _draggingPlayer = hit);
-          },
-          onPanUpdate: (d) {
-            if (_draggingPlayer != null) {
-              final newPos = Offset(
-                d.localPosition.dx.clamp(6.0, 302.0),
-                d.localPosition.dy.clamp(6.0, 218.0),
-              );
-              widget.onPlayerDragged(_draggingPlayer!, newPos);
-            }
-          },
-          onPanEnd: (_) => setState(() => _draggingPlayer = null),
-          child: CustomPaint(size: const Size(308, 224), painter: painter),
-        );
+  int? _hitTest(Offset localPosition) {
+    // Generous threshold for touch — edge players (RB/LB) are near the border
+    const threshold = 34.0;
+    final positions = _getPositions();
+    double bestDist = threshold;
+    int? hit;
+    for (int i = 0; i < positions.length; i++) {
+      final dist = (localPosition - positions[i]).distance;
+      if (dist < bestDist) {
+        bestDist = dist;
+        hit = i;
       }
-      return GestureDetector(
-        onTapDown: (d) {
-          const threshold = 14.0;
-          double bestDist = threshold;
-          int? hit;
-          final positions = _getPositions();
-          for (int i = 0; i < positions.length; i++) {
-            final dist = (d.localPosition - positions[i]).distance;
-            if (dist < bestDist) {
-              bestDist = dist;
-              hit = i;
-            }
-          }
-          widget.onPlayerTapped(hit);
-        },
-        child: CustomPaint(size: const Size(308, 224), painter: painter),
+    }
+    return hit;
+  }
+
+  void _handlePointerDown(PointerDownEvent e) {
+    _downPos = e.localPosition;
+    final hit = _hitTest(e.localPosition);
+    if (hit == null) return;
+    _pendingTapHit = hit;
+    if (hit != 0) {
+      // Only non-GK players start a drag
+      setState(() => _draggingPlayer = hit);
+    }
+  }
+
+  void _handlePointerMove(PointerMoveEvent e) {
+    if (_draggingPlayer != null) {
+      // Clear tap candidate once the finger has moved beyond slop
+      if (_downPos != null && (e.localPosition - _downPos!).distance > 8.0) {
+        _pendingTapHit = null;
+      }
+      final newPos = Offset(
+        e.localPosition.dx.clamp(8.0, 300.0),
+        e.localPosition.dy.clamp(8.0, 216.0),
       );
-    },
-  );
+      widget.onPlayerDragged(_draggingPlayer!, newPos);
+    }
+  }
+
+  void _handlePointerUp(PointerUpEvent e) {
+    if (_pendingTapHit != null) {
+      // Short tap with no significant drag → show info label
+      widget.onPlayerTapped(_pendingTapHit);
+      _pendingTapHit = null;
+    }
+    _downPos = null;
+    setState(() => _draggingPlayer = null);
+  }
+
+  void _handlePointerCancel(PointerCancelEvent e) {
+    _pendingTapHit = null;
+    _downPos = null;
+    setState(() => _draggingPlayer = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // The Listener/GestureDetector is built OUTSIDE the AnimatedBuilder so it
+    // is never recreated mid-gesture.  Only the CustomPaint (which needs the
+    // animation values) lives inside the builder.
+    if (widget.dragModeEnabled) {
+      return Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: _handlePointerDown,
+        onPointerMove: _handlePointerMove,
+        onPointerUp: _handlePointerUp,
+        onPointerCancel: _handlePointerCancel,
+        child: AnimatedBuilder(
+          animation: Listenable.merge([widget.pulseAnim, widget.passAnim]),
+          builder: (_, __) => CustomPaint(
+            size: const Size(308, 224),
+            painter: _PitchPainter(
+              pulse: widget.pulseAnim.value,
+              passT: widget.passAnim.value,
+              selectedPlayer: widget.selectedPlayer,
+              customPositions: widget.customPositions,
+              dragModeEnabled: widget.dragModeEnabled,
+              draggingPlayer: _draggingPlayer,
+              showHeatmap: widget.showHeatmap,
+              rotateNumbers: widget.rotateNumbers,
+            ),
+          ),
+        ),
+      );
+    }
+    return GestureDetector(
+      onTapDown: (d) {
+        final hit = _hitTest(d.localPosition);
+        widget.onPlayerTapped(hit);
+      },
+      child: AnimatedBuilder(
+        animation: Listenable.merge([widget.pulseAnim, widget.passAnim]),
+        builder: (_, __) => CustomPaint(
+          size: const Size(308, 224),
+          painter: _PitchPainter(
+            pulse: widget.pulseAnim.value,
+            passT: widget.passAnim.value,
+            selectedPlayer: widget.selectedPlayer,
+            customPositions: widget.customPositions,
+            dragModeEnabled: widget.dragModeEnabled,
+            draggingPlayer: _draggingPlayer,
+            showHeatmap: widget.showHeatmap,
+            rotateNumbers: widget.rotateNumbers,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ─── Pitch Painter ──────────────────────────────────────────────────────────
+
+// Cache laid-out TextPainters for jersey numbers — these never change.
+final _cachedJerseyPainters = <int, TextPainter>{};
+TextPainter _jerseyPainter(int num) => _cachedJerseyPainters.putIfAbsent(
+  num,
+  () => _layoutText(
+    '$num',
+    const TextStyle(
+      color: AppColors.background,
+      fontSize: 8.5,
+      fontWeight: FontWeight.w900,
+    ),
+  ),
+);
+
 class _PitchPainter extends CustomPainter {
   final double pulse, passT;
   final int? selectedPlayer;
@@ -2707,6 +3199,7 @@ class _PitchPainter extends CustomPainter {
   final bool dragModeEnabled;
   final int? draggingPlayer;
   final bool showHeatmap;
+  final bool rotateNumbers;
 
   const _PitchPainter({
     required this.pulse,
@@ -2716,6 +3209,7 @@ class _PitchPainter extends CustomPainter {
     required this.dragModeEnabled,
     this.draggingPlayer,
     required this.showHeatmap,
+    this.rotateNumbers = false,
   });
 
   Paint _lp(double alpha, {double width = 1.0, Color? color}) => Paint()
@@ -2807,20 +3301,22 @@ class _PitchPainter extends CustomPainter {
       _lp(0.70, width: 1.8),
     );
 
-    // Penalty arcs
+    // Penalty arcs — only the portion outside the penalty box is visible
+    // Left arc: penalty spot at x=46, box edge at x=56; arc faces right (into field)
     canvas.drawArc(
-      Rect.fromCircle(center: Offset(56, h / 2), radius: 24),
+      Rect.fromCircle(center: Offset(46, h / 2), radius: 26),
       -math.pi / 2.5,
       math.pi / 1.25,
       false,
-      _lp(0.16),
+      _lp(0.20),
     );
+    // Right arc: penalty spot at x=w-46, box edge at x=w-56; arc faces left (into field)
     canvas.drawArc(
-      Rect.fromCircle(center: Offset(w - 56, h / 2), radius: 24),
-      math.pi / 2 - math.pi / 2.5,
+      Rect.fromCircle(center: Offset(w - 46, h / 2), radius: 26),
+      math.pi - math.pi / 2.5,
       math.pi / 1.25,
       false,
-      _lp(0.16),
+      _lp(0.20),
     );
 
     // Penalty spots
@@ -2856,7 +3352,7 @@ class _PitchPainter extends CustomPainter {
       _drawPlayer(
         canvas,
         posA[i],
-        isGK ? 6.0 : (i % 3 == 0 ? 5.4 + pulse * 1.8 : 5.4),
+        isGK ? 10.0 : (i % 3 == 0 ? 9.0 + pulse * 1.2 : 9.0),
         isGK ? AppColors.gold : AppColors.teamA,
         pulse,
         _jerseyNumbers[i],
@@ -2864,26 +3360,24 @@ class _PitchPainter extends CustomPainter {
         isDragging: dragModeEnabled && draggingPlayer == i,
         dragMode: dragModeEnabled,
         isGK: isGK,
+        rotateNumber: rotateNumbers,
       );
     }
 
     if (selectedPlayer != null && selectedPlayer! < posA.length) {
-      _drawPositionLabel(canvas, posA[selectedPlayer!], selectedPlayer!);
+      _drawPositionLabel(canvas, posA[selectedPlayer!], selectedPlayer!, sz);
     }
 
     if (dragModeEnabled) {
-      final tp = TextPainter(
-        text: TextSpan(
-          text: 'EDIT MODE',
-          style: TextStyle(
-            color: AppColors.accent3.withValues(alpha: 0.35),
-            fontSize: 8,
-            letterSpacing: 3,
-            fontFamily: 'monospace',
-          ),
+      final tp = _layoutText(
+        'EDIT MODE',
+        TextStyle(
+          color: AppColors.accent3.withValues(alpha: 0.35),
+          fontSize: 8,
+          letterSpacing: 3,
+          fontFamily: 'monospace',
         ),
-        textDirection: TextDirection.ltr,
-      )..layout();
+      );
       tp.paint(canvas, Offset((w - tp.width) / 2, h - 12));
     }
   }
@@ -2914,24 +3408,17 @@ class _PitchPainter extends CustomPainter {
         draw = !draw;
         y += dashW + gapW;
       }
-      void paintLabel(double labelY) {
-        final tp = TextPainter(
-          text: TextSpan(
-            text: labels[i],
-            style: TextStyle(
-              color: colors[i].withValues(alpha: 0.5),
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        tp.paint(canvas, Offset(x - tp.width / 2, labelY));
-      }
-
-      paintLabel(2);
-      paintLabel(h - 11);
+      final labelTp = _layoutText(
+        labels[i],
+        TextStyle(
+          color: colors[i].withValues(alpha: 0.5),
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+        ),
+      );
+      labelTp.paint(canvas, Offset(x - labelTp.width / 2, 2));
+      labelTp.paint(canvas, Offset(x - labelTp.width / 2, h - 11));
     }
 
     if (positions.isNotEmpty) {
@@ -2944,18 +3431,15 @@ class _PitchPainter extends CustomPainter {
           ..strokeWidth = 1.0
           ..style = PaintingStyle.stroke,
       );
-      final gkTp = TextPainter(
-        text: TextSpan(
-          text: 'GK',
-          style: TextStyle(
-            color: AppColors.gold.withValues(alpha: 0.4),
-            fontSize: 8,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.0,
-          ),
+      final gkTp = _layoutText(
+        'GK',
+        TextStyle(
+          color: AppColors.gold.withValues(alpha: 0.4),
+          fontSize: 8,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.0,
         ),
-        textDirection: TextDirection.ltr,
-      )..layout();
+      );
       gkTp.paint(canvas, Offset(gkX - gkTp.width / 2, 2));
       gkTp.paint(canvas, Offset(gkX - gkTp.width / 2, h - gkTp.height - 2));
     }
@@ -2973,25 +3457,54 @@ class _PitchPainter extends CustomPainter {
     }
   }
 
-  void _drawPositionLabel(Canvas canvas, Offset pos, int index) {
+  void _drawPositionLabel(
+    Canvas canvas,
+    Offset pos,
+    int index,
+    Size canvasSize,
+  ) {
     const cardW = 52.0;
     const cardH = 36.0;
     const slant = 8.0;
     const stemLen = 14.0;
-    const cardBaseY = -stemLen - cardH;
+
     canvas.save();
     canvas.translate(pos.dx, pos.dy);
+    if (rotateNumbers) {
+      canvas.rotate(math.pi / 2);
+    }
 
+    // Decide whether the card goes above or below based on available space.
+    // After any rotation, "above" means negative local Y.
+    // We check in the original (pre-rotation) canvas space.
+    final bool flipBelow = rotateNumbers
+        ? pos.dx <
+              cardH +
+                  stemLen +
+                  8 // near left edge in original space → draw below after rotation
+        : pos.dy < cardH + stemLen + 8; // near top edge → draw below
+
+    // Decide whether the card goes right or left based on horizontal space.
+    final bool flipLeft = rotateNumbers
+        ? pos.dy >
+              canvasSize.height -
+                  (cardW + 20) // near bottom after rotation
+        : pos.dx > canvasSize.width - (cardW + 20); // near right edge
+
+    final double stemDirY = flipBelow ? 1.0 : -1.0;
+    final double cardBaseY = flipBelow ? stemLen : -stemLen - cardH;
+
+    // Stem line
     canvas.drawLine(
-      const Offset(0, -7),
-      const Offset(8, -stemLen),
+      Offset(0, stemDirY * 7),
+      Offset(flipLeft ? -8 : 8, stemDirY * stemLen),
       Paint()
         ..color = AppColors.gold.withValues(alpha: 0.7)
         ..strokeWidth = 1.0
         ..style = PaintingStyle.stroke,
     );
 
-    final cardLeft = 8.0;
+    final double cardLeft = flipLeft ? -(cardW + slant + 8) : 8.0;
     final cardPath = Path()
       ..moveTo(cardLeft + slant * 0.6, cardBaseY)
       ..lineTo(cardLeft + cardW + slant * 0.6, cardBaseY)
@@ -3019,15 +3532,8 @@ class _PitchPainter extends CustomPainter {
         ..style = PaintingStyle.stroke,
     );
 
-    void paintText(String text, TextStyle style, double dx, double dy) {
-      final tp = TextPainter(
-        text: TextSpan(text: text, style: style),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(dx, dy));
-    }
-
-    paintText(
+    _paintText(
+      canvas,
       '#${_jerseyNumbers[index]}',
       TextStyle(
         color: AppColors.gold.withValues(alpha: 0.55),
@@ -3035,10 +3541,10 @@ class _PitchPainter extends CustomPainter {
         fontWeight: FontWeight.w900,
         fontFamily: 'monospace',
       ),
-      cardLeft + slant * 0.6 + 6,
-      cardBaseY + 3,
+      Offset(cardLeft + slant * 0.6 + 6, cardBaseY + 3),
     );
-    paintText(
+    _paintText(
+      canvas,
       _positionLabels[index],
       const TextStyle(
         color: AppColors.gold,
@@ -3046,8 +3552,7 @@ class _PitchPainter extends CustomPainter {
         fontWeight: FontWeight.w900,
         letterSpacing: 1.5,
       ),
-      cardLeft + slant * 0.6 + 14,
-      cardBaseY + (cardH - 14) / 2 + 3,
+      Offset(cardLeft + slant * 0.6 + 14, cardBaseY + (cardH - 14) / 2 + 3),
     );
 
     canvas.restore();
@@ -3134,6 +3639,7 @@ class _PitchPainter extends CustomPainter {
     required bool isDragging,
     required bool dragMode,
     required bool isGK,
+    bool rotateNumber = false,
   }) {
     final c = dragMode && !isGK ? AppColors.accent3 : color;
     final outerR =
@@ -3220,22 +3726,30 @@ class _PitchPainter extends CustomPainter {
       );
     }
 
-    final np = TextPainter(
-      text: TextSpan(
-        text: '$num',
-        style: TextStyle(
-          color: AppColors.background,
-          fontSize: 5.5,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    np.paint(canvas, Offset(pos.dx - np.width / 2, pos.dy - np.height / 2));
+    final np = _jerseyPainter(num);
+
+    if (rotateNumber) {
+      // Rotate 90° CW to counteract the board's 90° CCW RotatedBox
+      canvas.save();
+      canvas.translate(pos.dx, pos.dy);
+      canvas.rotate(math.pi / 2);
+      np.paint(canvas, Offset(-np.width / 2, -np.height / 2));
+      canvas.restore();
+    } else {
+      np.paint(canvas, Offset(pos.dx - np.width / 2, pos.dy - np.height / 2));
+    }
   }
 
   @override
-  bool shouldRepaint(_PitchPainter old) => true;
+  bool shouldRepaint(_PitchPainter old) =>
+      old.pulse != pulse ||
+      old.passT != passT ||
+      old.selectedPlayer != selectedPlayer ||
+      old.customPositions != customPositions ||
+      old.dragModeEnabled != dragModeEnabled ||
+      old.draggingPlayer != draggingPlayer ||
+      old.showHeatmap != showHeatmap ||
+      old.rotateNumbers != rotateNumbers;
 }
 
 // ─── Stats Panel ────────────────────────────────────────────────────────────
@@ -3250,6 +3764,9 @@ class StatsPanel extends StatefulWidget {
 class _StatsPanelState extends State<StatsPanel>
     with SingleTickerProviderStateMixin {
   late final AnimationController _enter;
+  // Pre-built stagger animations (7 items: indices 0-6)
+  late final List<Animation<double>> _opacities;
+  late final List<Animation<double>> _slides;
 
   @override
   void initState() {
@@ -3258,6 +3775,17 @@ class _StatsPanelState extends State<StatsPanel>
       vsync: this,
       duration: const Duration(milliseconds: 950),
     );
+    _opacities = List.generate(7, (index) {
+      final start = (index * 0.1).clamp(0.0, 0.7);
+      final end = (start + 0.4).clamp(0.0, 1.0);
+      return CurvedAnimation(
+        parent: _enter,
+        curve: Interval(start, end, curve: _morphCurve),
+      );
+    });
+    _slides = _opacities
+        .map((curved) => Tween(begin: 20.0, end: 0.0).animate(curved))
+        .toList();
     Future.delayed(const Duration(milliseconds: 180), () {
       if (mounted) _enter.forward();
     });
@@ -3269,26 +3797,17 @@ class _StatsPanelState extends State<StatsPanel>
     super.dispose();
   }
 
-  Widget _staggered(Widget child, int index) {
-    final start = (index * 0.1).clamp(0.0, 0.7);
-    final end = (start + 0.4).clamp(0.0, 1.0);
-    final curved = CurvedAnimation(
-      parent: _enter,
-      curve: Interval(start, end, curve: _morphCurve),
-    );
-    final slide = Tween(begin: 20.0, end: 0.0).animate(curved);
-    return AnimatedBuilder(
-      animation: _enter,
-      builder: (_, child) => Opacity(
-        opacity: curved.value,
-        child: Transform.translate(
-          offset: Offset(0, slide.value),
-          child: child,
-        ),
+  Widget _staggered(Widget child, int index) => AnimatedBuilder(
+    animation: _enter,
+    builder: (_, child) => Opacity(
+      opacity: _opacities[index].value,
+      child: Transform.translate(
+        offset: Offset(0, _slides[index].value),
+        child: child,
       ),
-      child: child,
-    );
-  }
+    ),
+    child: child,
+  );
 
   @override
   Widget build(BuildContext context) => Column(
@@ -3394,6 +3913,7 @@ class _MatchBarRow extends StatefulWidget {
 class _MatchBarRowState extends State<_MatchBarRow>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
+  late final Animation<double> _curved;
 
   @override
   void initState() {
@@ -3402,6 +3922,7 @@ class _MatchBarRowState extends State<_MatchBarRow>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..forward();
+    _curved = CurvedAnimation(parent: _ctrl, curve: _morphCurve);
   }
 
   @override
@@ -3418,9 +3939,9 @@ class _MatchBarRowState extends State<_MatchBarRow>
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _ctrl,
+    animation: _curved,
     builder: (_, __) {
-      final t = CurvedAnimation(parent: _ctrl, curve: _morphCurve).value;
+      final t = _curved.value;
       return Column(
         children: _stats
             .map(
