@@ -1,0 +1,311 @@
+{
+    "designSystem": {
+      "name": "Football Tactical HUD",
+      "version": "1.0",
+      "description": "Cyberpunk holographic football analytics interface inspired by tactical blueprint displays.",
+  
+      "theme": {
+        "mode": "dark",
+        "background": {
+          "primary": "#081221",
+          "secondary": "#0B1E34",
+          "surface": "#10263F",
+          "surfaceVariant": "#17314A",
+          "grid": {
+            "enabled": true,
+            "color": "#1B3952",
+            "opacity": 0.25,
+            "spacing": 18
+          }
+        },
+  
+        "colors": {
+          "primary": "#3DF7F2",
+          "secondary": "#22D7FF",
+          "accent": "#A8FFFF",
+          "success": "#59FF9A",
+          "warning": "#FFD54A",
+          "danger": "#FF5D73",
+          "textPrimary": "#E6FFFF",
+          "textSecondary": "#8FB7C7",
+          "disabled": "#496272"
+        },
+  
+        "effects": {
+          "glow": {
+            "enabled": true,
+            "color": "#3DF7F2",
+            "blur": 16,
+            "spread": 1.2,
+            "opacity": 0.35
+          },
+          "scanLines": true,
+          "noise": true,
+          "particles": true,
+          "pulseAnimation": true,
+          "borderGlow": true
+        },
+  
+        "typography": {
+          "heading": {
+            "font": "Orbitron",
+            "size": 22,
+            "weight": "700",
+            "spacing": 1.5,
+            "color": "#E6FFFF"
+          },
+          "title": {
+            "font": "Rajdhani",
+            "size": 18,
+            "weight": "600"
+          },
+          "body": {
+            "font": "Rajdhani",
+            "size": 14,
+            "weight": "400"
+          },
+          "caption": {
+            "font": "Rajdhani",
+            "size": 12,
+            "weight": "400",
+            "color": "#8FB7C7"
+          }
+        }
+      },
+  
+      "layout": {
+        "padding": 20,
+        "spacing": 18,
+        "cornerRadius": 18,
+        "borderWidth": 2
+      },
+  
+      "panel": {
+        "shape": "angled",
+        "borderColor": "#3DF7F2",
+        "background": "#10263F",
+        "opacity": 0.12,
+        "shadowBlur": 18,
+        "glow": true,
+        "cornerCuts": true
+      },
+  
+      "decorations": {
+        "cornerDots": true,
+        "microGrid": true,
+        "technicalLines": true,
+        "floatingCoordinates": true,
+        "floatingNumbers": true,
+        "horizontalMarkers": true,
+        "crosshairElements": true,
+        "smallIndicators": true
+      },
+  
+      "icons": {
+        "style": "wireframe",
+        "strokeWidth": 2,
+        "color": "#3DF7F2",
+        "glow": true
+      },
+  
+      "animations": {
+        "idleGlow": true,
+        "floatingPanels": true,
+        "radarSweep": true,
+        "numberCounter": true,
+        "loadingBars": true,
+        "borderPulse": true,
+        "scanAnimation": true
+      },
+  
+      "dashboard": {
+        "header": {
+          "showPlayerAvatar": true,
+          "showClubLogo": true,
+          "showOverallRating": true,
+          "showNationality": true,
+          "showPosition": true
+        },
+  
+        "sections": [
+          {
+            "id": "player_profile",
+            "title": "PLAYER PROFILE",
+            "widget": "HudCard",
+            "fields": [
+              "Name",
+              "Age",
+              "Club",
+              "Position",
+              "Height",
+              "Weight",
+              "Preferred Foot",
+              "Nationality",
+              "Market Value"
+            ]
+          },
+          {
+            "id": "performance",
+            "title": "PLAYER ATTRIBUTES",
+            "widget": "RadarChart",
+            "stats": [
+              "Pace",
+              "Shooting",
+              "Passing",
+              "Dribbling",
+              "Defending",
+              "Physical"
+            ]
+          },
+          {
+            "id": "match_stats",
+            "title": "MATCH ANALYTICS",
+            "widget": "StatsGrid",
+            "stats": [
+              "Goals",
+              "Assists",
+              "Shots",
+              "Shots on Target",
+              "xG",
+              "xA",
+              "Touches",
+              "Pass Accuracy",
+              "Progressive Passes",
+              "Key Passes",
+              "Interceptions",
+              "Tackles",
+              "Clearances",
+              "Recoveries"
+            ]
+          },
+          {
+            "id": "heatmap",
+            "title": "POSITION HEATMAP",
+            "widget": "Heatmap"
+          },
+          {
+            "id": "passing_network",
+            "title": "PASS NETWORK",
+            "widget": "NetworkGraph"
+          },
+          {
+            "id": "timeline",
+            "title": "MATCH TIMELINE",
+            "widget": "Timeline",
+            "events": [
+              "Goal",
+              "Assist",
+              "Yellow Card",
+              "Red Card",
+              "Substitution",
+              "Injury"
+            ]
+          },
+          {
+            "id": "recent_matches",
+            "title": "RECENT MATCHES",
+            "widget": "ScrollableCards"
+          }
+        ]
+      },
+  
+      "widgets": {
+        "HudCard": {
+          "borderRadius": 18,
+          "borderColor": "#3DF7F2",
+          "backgroundOpacity": 0.12,
+          "glow": true
+        },
+  
+        "StatCard": {
+          "style": "holographic",
+          "showMiniGraph": true,
+          "animatedNumber": true
+        },
+  
+        "StatBar": {
+          "height": 8,
+          "background": "#17314A",
+          "gradient": [
+            "#22D7FF",
+            "#3DF7F2"
+          ],
+          "rounded": true,
+          "animated": true
+        },
+  
+        "CircularGauge": {
+          "ticks": true,
+          "glow": true,
+          "animated": true
+        },
+  
+        "RadarChart": {
+          "outlineColor": "#3DF7F2",
+          "fillOpacity": 0.15,
+          "gridColor": "#1B3952",
+          "showVertices": true
+        },
+  
+        "Heatmap": {
+          "background": "#10263F",
+          "activeColor": "#3DF7F2",
+          "opacity": 0.75
+        },
+  
+        "Timeline": {
+          "lineColor": "#22D7FF",
+          "nodeGlow": true
+        }
+      },
+  
+      "flutterStructure": {
+        "root": "Scaffold",
+        "body": {
+          "type": "Stack",
+          "children": [
+            "AnimatedGridBackground",
+            "ParticleLayer",
+            "GlowOverlay",
+            {
+              "Column": [
+                "TopHUD",
+                "PlayerHeader",
+                "PlayerProfileCard",
+                "RadarChart",
+                "PerformanceBars",
+                "Heatmap",
+                "PassingNetwork",
+                "Timeline",
+                "RecentMatches",
+                "BottomHUD"
+              ]
+            }
+          ]
+        }
+      },
+  
+      "recommendedPackages": {
+        "animations": [
+          "flutter_animate",
+          "lottie"
+        ],
+        "charts": [
+          "fl_chart",
+          "syncfusion_flutter_charts"
+        ],
+        "gauges": [
+          "syncfusion_flutter_gauges"
+        ],
+        "icons": [
+          "flutter_svg"
+        ],
+        "glass": [
+          "glassmorphism_ui"
+        ],
+        "effects": [
+          "simple_animations"
+        ]
+      }
+    }
+  }
