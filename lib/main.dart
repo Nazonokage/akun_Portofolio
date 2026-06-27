@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
+import 'package:visibility_detector/visibility_detector.dart';
 
 void main() => runApp(const TacticBoardApp());
 
@@ -26,15 +29,41 @@ const _snapCurve = Cubic(0.22, 1.0, 0.36, 1.0);
 
 double _lerp(double a, double b, double t) => a + (b - a) * t;
 
-/// Builds and lays out a single-line [TextPainter]. Shared by every canvas
-/// painter below to avoid repeating the same TextSpan/layout boilerplate.
-TextPainter _layoutText(String text, TextStyle style) => TextPainter(
-  text: TextSpan(text: text, style: style),
-  textDirection: TextDirection.ltr,
-)..layout();
+// ─── Shared Text Layout Cache (capped LRU) ────────────────────────────────
+class _LRUTextCache {
+  static const _maxSize = 50;
+  static final _cache = <String, TextPainter>{};
+  static final _order = <String>[];
 
-/// Lays out and immediately paints [text] at [offset] — for one-off canvas
-/// labels that don't need to be cached across frames.
+  static TextPainter get(String text, TextStyle style) {
+    final key = '$text-${style.hashCode}';
+    if (_cache.containsKey(key)) {
+      _order.remove(key);
+      _order.add(key);
+      return _cache[key]!;
+    }
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    if (_cache.length >= _maxSize) {
+      final oldest = _order.removeAt(0);
+      _cache.remove(oldest);
+    }
+    _cache[key] = painter;
+    _order.add(key);
+    return painter;
+  }
+
+  static void clear() {
+    _cache.clear();
+    _order.clear();
+  }
+}
+
+TextPainter _layoutText(String text, TextStyle style) =>
+    _LRUTextCache.get(text, style);
+
 void _paintText(Canvas canvas, String text, TextStyle style, Offset offset) {
   _layoutText(text, style).paint(canvas, offset);
 }
@@ -49,7 +78,7 @@ class FormationAnalyzer {
     final xValues = (List<Offset>.from(
       nonGk,
     )..sort((a, b) => a.dx.compareTo(b.dx))).map((p) => p.dx).toList();
-    final clusters = _kMeans(xValues, 3);
+    final clusters = _kMeansOptimized(xValues, 3);
     final counts = List.filled(3, 0);
     for (final idx in clusters) {
       counts[idx]++;
@@ -72,7 +101,7 @@ class FormationAnalyzer {
     final xValues = (List<Offset>.from(
       nonGk,
     )..sort((a, b) => a.dx.compareTo(b.dx))).map((p) => p.dx).toList();
-    final avgs = _clusterAvgs(xValues, _kMeans(xValues, 3), 3)..sort();
+    final avgs = _clusterAvgs(xValues, _kMeansOptimized(xValues, 3), 3)..sort();
     return avgs;
   }
 
@@ -81,14 +110,18 @@ class FormationAnalyzer {
     List<int> labels,
     int k,
   ) => List.generate(k, (i) {
-    final vals = [
-      for (int j = 0; j < data.length; j++)
-        if (labels[j] == i) data[j],
-    ];
-    return vals.isNotEmpty ? vals.reduce((a, b) => a + b) / vals.length : 0.0;
+    double sum = 0.0;
+    int count = 0;
+    for (int j = 0; j < data.length; j++) {
+      if (labels[j] == i) {
+        sum += data[j];
+        count++;
+      }
+    }
+    return count > 0 ? sum / count : 0.0;
   });
 
-  static List<int> _kMeans(List<double> data, int k) {
+  static List<int> _kMeansOptimized(List<double> data, int k) {
     if (data.isEmpty) return [];
     final minVal = data.reduce(math.min);
     final step = (data.reduce(math.max) - minVal) / (k - 1);
@@ -112,14 +145,15 @@ class FormationAnalyzer {
           changed = true;
         }
       }
+      final sums = List.filled(k, 0.0);
+      final counts = List.filled(k, 0);
+      for (int i = 0; i < data.length; i++) {
+        final label = labels[i];
+        sums[label] += data[i];
+        counts[label]++;
+      }
       for (int j = 0; j < k; j++) {
-        final cluster = [
-          for (int i = 0; i < data.length; i++)
-            if (labels[i] == j) data[i],
-        ];
-        if (cluster.isNotEmpty) {
-          centroids[j] = cluster.reduce((a, b) => a + b) / cluster.length;
-        }
+        if (counts[j] > 0) centroids[j] = sums[j] / counts[j];
       }
     }
     return labels;
@@ -129,10 +163,10 @@ class FormationAnalyzer {
 // ─── Position / Jersey Data ──────────────────────────────────────────────
 const _positionLabels = [
   'GK',
-  'RB',
-  'CB',
-  'CB',
   'LB',
+  'CB',
+  'CB',
+  'RB',
   'CDM',
   'CDM',
   'LW',
@@ -144,10 +178,10 @@ const _jerseyNumbers = [1, 2, 3, 4, 5, 6, 8, 7, 10, 11, 9];
 
 final _defaultPositions = [
   (w, h) => Offset(w * 0.07, h / 2),
-  (w, h) => Offset(w * 0.21, h * 0.10), // RB
+  (w, h) => Offset(w * 0.21, h * 0.10),
   (w, h) => Offset(w * 0.21, h * 0.38),
   (w, h) => Offset(w * 0.21, h * 0.62),
-  (w, h) => Offset(w * 0.21, h * 0.90), // LB
+  (w, h) => Offset(w * 0.21, h * 0.90),
   (w, h) => Offset(w * 0.36, h * 0.38),
   (w, h) => Offset(w * 0.36, h * 0.62),
   (w, h) => Offset(w * 0.50, h * 0.22),
@@ -179,11 +213,12 @@ class TacticBoardScreen extends StatefulWidget {
 class _TacticBoardScreenState extends State<TacticBoardScreen>
     with TickerProviderStateMixin {
   final ScrollController _scroll = ScrollController();
-  double _scrollProgress = 0;
-  double _rawOffset = 0;
+  final ValueNotifier<double> _scrollProgress = ValueNotifier<double>(0);
+  final ValueNotifier<double> _rawOffset = ValueNotifier<double>(0);
   final ValueNotifier<bool> _editModeNotifier = ValueNotifier<bool>(false);
 
   late final AnimationController _ghostCtrl, _auroraCtrl, _entryCtrl;
+  late final Animation<double> _entryCurved; // cached CurvedAnimation
   final ValueNotifier<String> _formationNotifier = ValueNotifier<String>(
     "4-2-3-1",
   );
@@ -203,6 +238,7 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1400),
     );
+    _entryCurved = CurvedAnimation(parent: _entryCtrl, curve: _morphCurve);
     Future.delayed(const Duration(milliseconds: 120), () {
       if (mounted) _entryCtrl.forward();
     });
@@ -210,14 +246,9 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
     _scroll.addListener(() {
       final offset = _scroll.offset;
       final p = (offset / 420).clamp(0.0, 1.0);
-      if ((p - _scrollProgress).abs() > 0.0005 ||
-          (offset - _rawOffset).abs() > 0.5) {
-        setState(() {
-          _scrollProgress = p;
-          _rawOffset = offset;
-        });
-        _ghostCtrl.value = ((offset - 280) / 180).clamp(0.0, 1.0);
-      }
+      _scrollProgress.value = p;
+      _rawOffset.value = offset;
+      _ghostCtrl.value = ((offset - 280) / 180).clamp(0.0, 1.0);
     });
   }
 
@@ -229,73 +260,38 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
     _entryCtrl.dispose();
     _formationNotifier.dispose();
     _editModeNotifier.dispose();
+    _LRUTextCache.clear();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          // Aurora background
+          // Combined background painter (aurora + morph + grid + vignette)
           Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _auroraCtrl,
-              builder: (_, __) => CustomPaint(
-                painter: _AuroraPainter(
-                  t: _auroraCtrl.value,
-                  scroll: _rawOffset,
+            child: RepaintBoundary(
+              child: ValueListenableBuilder<double>(
+                valueListenable: _rawOffset,
+                builder: (_, offset, __) => AnimatedBuilder(
+                  animation: _auroraCtrl,
+                  builder: (_, __) => CustomPaint(
+                    painter: _CombinedBgPainter(
+                      scroll: offset,
+                      auroraT: _auroraCtrl.value,
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-          // Morphing pitch background
-          Positioned.fill(child: _MorphingBackground(scrollOffset: _rawOffset)),
-          // Floating particles
-          const Positioned.fill(child: IgnorePointer(child: _SpaceParticles())),
-          // Ghost board
-          Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedBuilder(
-                animation: _ghostCtrl,
-                builder: (_, __) {
-                  final t = _morphCurve.transform(_ghostCtrl.value);
-                  if (t < 0.01) return const SizedBox.shrink();
-                  final x = _lerp(
-                    screenSize.width * 0.5 - 168,
-                    screenSize.width - 170,
-                    t,
-                  );
-                  final y = _lerp(
-                    screenSize.height * 0.22,
-                    screenSize.height * 0.52,
-                    t,
-                  );
-                  final scale = _lerp(1.0, 0.52, t);
-                  final alpha = _lerp(0.0, 0.18, t);
-                  return Stack(
-                    children: [
-                      Positioned(
-                        left: x,
-                        top: y,
-                        child: Opacity(
-                          opacity: alpha,
-                          child: Transform.scale(
-                            scale: scale,
-                            alignment: Alignment.topLeft,
-                            child: const _GhostBoardMini(),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+          const Positioned.fill(
+            child: RepaintBoundary(
+              child: IgnorePointer(child: _SpaceParticles()),
             ),
           ),
-          // Entry flash
           Positioned.fill(
             child: IgnorePointer(
               child: AnimatedBuilder(
@@ -311,7 +307,6 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
               ),
             ),
           ),
-          // Pinned Scroll Depth Bar
           Positioned(
             top: 0,
             left: 0,
@@ -322,11 +317,14 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
                   horizontal: 16,
                   vertical: 8,
                 ),
-                child: _ScrollProgressBar(scrollOffset: _rawOffset),
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _scrollProgress,
+                  builder: (_, progress, __) =>
+                      _ScrollProgressBar(progress: progress),
+                ),
               ),
             ),
           ),
-          // Main scrollable content
           SafeArea(
             child: ValueListenableBuilder<bool>(
               valueListenable: _editModeNotifier,
@@ -342,12 +340,9 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
               child: AnimatedBuilder(
                 animation: _entryCtrl,
                 builder: (_, child) {
-                  final t = CurvedAnimation(
-                    parent: _entryCtrl,
-                    curve: _morphCurve,
-                  ).value;
-                  return Opacity(
-                    opacity: t.clamp(0.0, 1.0),
+                  final t = _entryCurved.value;
+                  return FadeTransition(
+                    opacity: AlwaysStoppedAnimation(t.clamp(0.0, 1.0)),
                     child: Transform.translate(
                       offset: Offset(0, _lerp(40, 0, t)),
                       child: child,
@@ -356,48 +351,26 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
                 },
                 child: Column(
                   children: [
-                    const SizedBox(height: 60),
+                    const SizedBox(height: 100),
                     _HeroSection(
-                      scrollProgress: _scrollProgress,
+                      scrollProgressNotifier: _scrollProgress,
                       formationNotifier: _formationNotifier,
                       editModeNotifier: _editModeNotifier,
                     ),
-                    _InfoSection(scrollOffset: _rawOffset),
+                    _InfoSection(rawOffsetNotifier: _rawOffset),
+                    // Extra bottom spacer so the scroll view has more vertical depth
+                    // on all screen sizes.
+                    SizedBox(height: MediaQuery.of(context).size.height * 0.25),
                   ],
                 ),
               ),
             ),
           ),
-          // Scan line
-          Positioned(
+          const Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: IgnorePointer(child: _ScanLine()),
-          ),
-          // Ghost label
-          AnimatedBuilder(
-            animation: _ghostCtrl,
-            builder: (_, __) {
-              final t = _morphCurve.transform(_ghostCtrl.value);
-              if (t < 0.5) return const SizedBox.shrink();
-              final op = ((t - 0.5) * 2).clamp(0.0, 1.0);
-              return Positioned(
-                right: 12,
-                bottom: MediaQuery.of(context).size.height * 0.52 - 28,
-                child: Opacity(
-                  opacity: op * 0.7,
-                  child: const Text(
-                    'LIVE BOARD',
-                    style: TextStyle(
-                      fontSize: 7,
-                      color: AppColors.neonGlow,
-                      letterSpacing: 2.5,
-                    ),
-                  ),
-                ),
-              );
-            },
           ),
         ],
       ),
@@ -407,12 +380,11 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
 
 // ─── Scroll Progress Bar ──────────────────────────────────────────────────
 class _ScrollProgressBar extends StatelessWidget {
-  final double scrollOffset;
-  const _ScrollProgressBar({required this.scrollOffset});
+  final double progress;
+  const _ScrollProgressBar({required this.progress});
 
   @override
   Widget build(BuildContext context) {
-    final progress = (scrollOffset / 800).clamp(0.0, 1.0);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
       decoration: BoxDecoration(
@@ -456,36 +428,163 @@ class _ScrollProgressBar extends StatelessWidget {
   }
 }
 
-// ─── Aurora Painter ───────────────────────────────────────────────────────
-class _AuroraPainter extends CustomPainter {
-  final double t, scroll;
-  const _AuroraPainter({required this.t, required this.scroll});
+// ─── Combined Background Painter ──────────────────────────────────────────
+class _CombinedBgPainter extends CustomPainter {
+  final double scroll;
+  final double auroraT;
+  _CombinedBgPainter({required this.scroll, required this.auroraT});
+
+  // Cached shaders for morph background
+  ui.Shader? _pitchShader;
+  ui.Shader? _vignetteShader;
+  double _lastScroll = -1.0;
+  double _lastOpacity = -1.0;
+  double _lastSOp = -1.0;
+  Size? _lastSize;
+
+  // Cached aurora blobs (offscreen layer)
+  ui.Picture? _auroraPicture;
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    final rect = Rect.fromLTWH(0, 0, w, h);
+    final t = Curves.easeInOutCubic.transform((scroll / 420).clamp(0.0, 1.0));
+    final pT = h * 0.05 + t * h * 0.55;
+    final pB = h * 0.52 + t * h * 0.55;
+    final pL = w * 0.08;
+    final pR = w * 0.92;
+    final op = (0.06 - t * 0.04).clamp(0.0, 0.1);
+    final sOp = (0.14 - t * 0.10).clamp(0.0, 0.18);
+    final pH = pB - pT;
+    final pW = pR - pL;
 
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = const LinearGradient(
+    // ---- Aurora ----
+    final sizeChanged = _lastSize != size;
+    if (sizeChanged || _auroraPicture == null) {
+      _lastSize = size;
+      final recorder = ui.PictureRecorder();
+      final c = Canvas(recorder);
+      _drawAurora(c, size);
+      _auroraPicture = recorder.endRecording();
+    }
+    canvas.drawPicture(_auroraPicture!);
+
+    // ---- Morph background ----
+    final opChanged = (op - _lastOpacity).abs() > 0.005;
+    final sOpChanged = (sOp - _lastSOp).abs() > 0.005;
+    final scrollChanged = (scroll - _lastScroll).abs() > 1.0;
+
+    if (sizeChanged || opChanged || sOpChanged || scrollChanged) {
+      _lastSize = size;
+      _lastOpacity = op;
+      _lastSOp = sOp;
+      _lastScroll = scroll;
+      if (op > 0.001) {
+        final pitchRect = Rect.fromLTRB(pL, pT, pR, pB);
+        _pitchShader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [AppColors.background, Color(0xFF030912)],
-        ).createShader(rect),
-    );
+          colors: [
+            AppColors.neonGlow.withValues(alpha: op * 0.8),
+            AppColors.neonGlow.withValues(alpha: op),
+            AppColors.neonGlow.withValues(alpha: op * 0.4),
+          ],
+        ).createShader(pitchRect);
+      } else {
+        _pitchShader = null;
+      }
+      _vignetteShader = RadialGradient(
+        colors: [
+          Colors.transparent,
+          AppColors.background.withValues(alpha: 0.78),
+        ],
+        radius: 0.85,
+      ).createShader(Rect.fromLTWH(0, 0, w, h));
+    }
 
-    _blob(
+    if (op > 0.001 && _pitchShader != null) {
+      final pitchRect = Rect.fromLTRB(pL, pT, pR, pB);
+      final rr = RRect.fromRectAndRadius(pitchRect, const Radius.circular(24));
+      canvas.drawRRect(rr, Paint()..shader = _pitchShader!);
+      canvas.drawRRect(
+        rr,
+        Paint()
+          ..color = AppColors.neonGlow.withValues(alpha: sOp)
+          ..strokeWidth = 1.2
+          ..style = PaintingStyle.stroke,
+      );
+      final midY = pT + pH / 2;
+      canvas.drawLine(
+        Offset(pL, midY),
+        Offset(pR, midY),
+        Paint()
+          ..color = AppColors.neonGlow.withValues(alpha: sOp * 0.7)
+          ..strokeWidth = 0.8,
+      );
+      canvas.drawCircle(
+        Offset(pL + pW / 2, midY),
+        pH * 0.16,
+        Paint()
+          ..color = AppColors.neonGlow.withValues(alpha: sOp * 0.5)
+          ..strokeWidth = 0.8
+          ..style = PaintingStyle.stroke,
+      );
+      for (final rect in [
+        Rect.fromLTRB(pL, pT + pH * 0.3, pL + pW * 0.2, pB - pH * 0.3),
+        Rect.fromLTRB(pR - pW * 0.2, pT + pH * 0.3, pR, pB - pH * 0.3),
+      ]) {
+        canvas.drawRect(
+          rect,
+          Paint()
+            ..color = AppColors.neonGlow.withValues(alpha: sOp * 0.45)
+            ..strokeWidth = 0.7
+            ..style = PaintingStyle.stroke,
+        );
+      }
+    }
+
+    // Grid
+    final gridPaint = Paint()
+      ..color = AppColors.grid.withValues(alpha: 0.07)
+      ..strokeWidth = 0.4;
+    const step = 64.0;
+    final shift = (scroll * 0.2) % step;
+    for (double x = -shift; x < w; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, h), gridPaint);
+    }
+    for (double y = -shift; y < h; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(w, y), gridPaint);
+    }
+
+    // Vignette
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, w, h),
+      Paint()..shader = _vignetteShader!,
+    );
+  }
+
+  void _drawAurora(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final rect = Rect.fromLTWH(0, 0, w, h);
+    final bgShader = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [AppColors.background, Color(0xFF030912)],
+    ).createShader(rect);
+    canvas.drawRect(rect, Paint()..shader = bgShader);
+
+    final t = auroraT;
+    _drawBlob(
       canvas,
       w * (0.3 + math.sin(t * math.pi * 2) * 0.2),
-      h * (0.25 + math.cos(t * math.pi * 1.3) * 0.1) - scroll * 0.05,
+      h * (0.25 + math.cos(t * math.pi * 1.3) * 0.1),
       w * 0.9,
       h * 0.55,
       const Color(0xFF1A0E3A).withValues(alpha: 0.38 + 0.08 * t),
     );
-    _blob(
+    _drawBlob(
       canvas,
       w * 0.8 + math.cos(t * math.pi * 1.7) * w * 0.1,
       h * 0.7,
@@ -493,27 +592,9 @@ class _AuroraPainter extends CustomPainter {
       h * 0.45,
       const Color(0xFF0D2240).withValues(alpha: 0.28),
     );
-    _blob(
-      canvas,
-      w * 0.15 + math.sin(t * math.pi * 2.1) * w * 0.05,
-      h * 0.5,
-      w * 0.5,
-      h * 0.35,
-      AppColors.accent2.withValues(alpha: 0.04 + t * 0.02),
-    );
-    _blob(
-      canvas,
-      w * 0.5,
-      h * 0.08 - scroll * 0.03,
-      w * 0.8,
-      h * 0.2,
-      AppColors.neonGlow.withValues(
-        alpha: 0.025 + math.sin(t * math.pi * 2) * 0.012,
-      ),
-    );
   }
 
-  void _blob(
+  void _drawBlob(
     Canvas canvas,
     double cx,
     double cy,
@@ -525,14 +606,14 @@ class _AuroraPainter extends CustomPainter {
     canvas.drawOval(
       rect,
       Paint()
-        ..shader = RadialGradient(
-          colors: [color, color.withValues(alpha: 0)],
-        ).createShader(rect),
+        ..color = color
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
   }
 
   @override
-  bool shouldRepaint(_AuroraPainter old) => old.t != t || old.scroll != scroll;
+  bool shouldRepaint(_CombinedBgPainter old) =>
+      old.scroll != scroll || old.auroraT != auroraT;
 }
 
 // ─── Ghost Board Mini ──────────────────────────────────────────────────────
@@ -562,70 +643,72 @@ class _GhostBoardMiniState extends State<_GhostBoardMini>
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _pulse,
-    builder: (_, __) => Container(
-      width: 336,
-      height: 252,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        color: AppColors.frame.withValues(alpha: 0.6),
-        border: Border.all(
-          color: AppColors.neonGlow.withValues(alpha: 0.35),
-          width: 1.3,
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: AnimatedBuilder(
+      animation: _pulse,
+      builder: (_, __) => Container(
+        width: 336,
+        height: 252,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          color: AppColors.frame.withValues(alpha: 0.6),
+          border: Border.all(
+            color: AppColors.neonGlow.withValues(alpha: 0.35),
+            width: 1.3,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.neonGlow.withValues(
+                alpha: 0.25 + _pulse.value * 0.12,
+              ),
+              blurRadius: 24,
+              spreadRadius: 4,
+            ),
+            BoxShadow(
+              color: AppColors.accent2.withValues(alpha: 0.08),
+              blurRadius: 60,
+              spreadRadius: 16,
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.neonGlow.withValues(
-              alpha: 0.25 + _pulse.value * 0.12,
-            ),
-            blurRadius: 40,
-            spreadRadius: 6,
-          ),
-          BoxShadow(
-            color: AppColors.accent2.withValues(alpha: 0.08),
-            blurRadius: 80,
-            spreadRadius: 20,
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Stack(
-          children: [
-            ..._cornerBrackets(AppColors.neonGlow.withValues(alpha: 0.55)),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: CustomPaint(
-                  size: const Size(308, 224),
-                  painter: _GhostPitchPainter(pulse: _pulse.value),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _HoloPainter(specularX: 0.35, specularY: 0.4),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 12,
-              right: 14,
-              child: Text(
-                'LIVE',
-                style: TextStyle(
-                  fontSize: 8,
-                  letterSpacing: 2.5,
-                  color: AppColors.teamB.withValues(
-                    alpha: 0.65 + _pulse.value * 0.35,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Stack(
+            children: [
+              ..._cornerBrackets(AppColors.neonGlow.withValues(alpha: 0.55)),
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: CustomPaint(
+                    size: const Size(308, 224),
+                    painter: _GhostPitchPainter(pulse: _pulse.value),
                   ),
                 ),
               ),
-            ),
-            const _TopGradientLine(),
-          ],
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _HoloPainter(specularX: 0.35, specularY: 0.4),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 12,
+                right: 14,
+                child: Text(
+                  'LIVE',
+                  style: TextStyle(
+                    fontSize: 8,
+                    letterSpacing: 2.5,
+                    color: AppColors.teamB.withValues(
+                      alpha: 0.65 + _pulse.value * 0.35,
+                    ),
+                  ),
+                ),
+              ),
+              const _TopGradientLine(),
+            ],
+          ),
         ),
       ),
     ),
@@ -634,9 +717,7 @@ class _GhostBoardMiniState extends State<_GhostBoardMini>
 
 // ─── Shared top gradient line ─────────────────────────────────────────────
 class _TopGradientLine extends StatelessWidget {
-  const _TopGradientLine({this.alpha = 0.8});
-  final double alpha;
-
+  const _TopGradientLine();
   @override
   Widget build(BuildContext context) => Positioned(
     top: 0,
@@ -648,7 +729,7 @@ class _TopGradientLine extends StatelessWidget {
         gradient: LinearGradient(
           colors: [
             Colors.transparent,
-            AppColors.neonGlow.withValues(alpha: alpha),
+            AppColors.neonGlow.withValues(alpha: 0.8),
             Colors.transparent,
           ],
         ),
@@ -657,16 +738,27 @@ class _TopGradientLine extends StatelessWidget {
   );
 }
 
-// ─── Corner Brackets ──────────────────────────────────────────────────────
-List<Widget> _cornerBrackets(Color color) => [
-  for (final a in [
-    const Alignment(-1.0, -1.0),
-    const Alignment(1.0, -1.0),
-    const Alignment(-1.0, 1.0),
-    const Alignment(1.0, 1.0),
-  ])
-    _BracketWidget(alignment: a, color: color),
+// ─── Corner Brackets (cached) ──────────────────────────────────────────────
+final List<Widget> _cornerBracketsCache = [
+  _BracketWidget(
+    alignment: const Alignment(-1.0, -1.0),
+    color: AppColors.neonGlow.withValues(alpha: 0.55),
+  ),
+  _BracketWidget(
+    alignment: const Alignment(1.0, -1.0),
+    color: AppColors.neonGlow.withValues(alpha: 0.55),
+  ),
+  _BracketWidget(
+    alignment: const Alignment(-1.0, 1.0),
+    color: AppColors.neonGlow.withValues(alpha: 0.55),
+  ),
+  _BracketWidget(
+    alignment: const Alignment(1.0, 1.0),
+    color: AppColors.neonGlow.withValues(alpha: 0.55),
+  ),
 ];
+
+List<Widget> _cornerBrackets(Color color) => _cornerBracketsCache;
 
 class _BracketWidget extends StatelessWidget {
   final Alignment alignment;
@@ -698,7 +790,8 @@ class _BracketPainter extends CustomPainter {
   final bool isLeft, isTop;
   final Color color;
   final double w;
-  const _BracketPainter(this.isLeft, this.isTop, this.color, this.w);
+  // Removed const constructor to avoid analysis error
+  _BracketPainter(this.isLeft, this.isTop, this.color, this.w);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -718,9 +811,6 @@ class _BracketPainter extends CustomPainter {
   @override
   bool shouldRepaint(_BracketPainter old) => false;
 }
-
-// Cache for ghost board's smaller jersey number painters
-final _cachedGhostJerseyPainters = <int, TextPainter>{};
 
 // ─── Ghost Pitch Painter ──────────────────────────────────────────────────
 class _GhostPitchPainter extends CustomPainter {
@@ -813,16 +903,12 @@ class _GhostPitchPainter extends CustomPainter {
       Paint()..color = color.withValues(alpha: 0.14 + p * 0.10),
     );
     canvas.drawCircle(pos, r, Paint()..color = color.withValues(alpha: 0.92));
-    // Use a separate cache for the ghost board's smaller font size (5.5 vs 8.5)
-    final np = _cachedGhostJerseyPainters.putIfAbsent(
-      num,
-      () => _layoutText(
-        '$num',
-        const TextStyle(
-          color: AppColors.background,
-          fontSize: 5.5,
-          fontWeight: FontWeight.w900,
-        ),
+    final np = _layoutText(
+      '$num',
+      const TextStyle(
+        color: AppColors.background,
+        fontSize: 5.5,
+        fontWeight: FontWeight.w900,
       ),
     );
     np.paint(canvas, Offset(pos.dx - np.width / 2, pos.dy - np.height / 2));
@@ -832,8 +918,8 @@ class _GhostPitchPainter extends CustomPainter {
   bool shouldRepaint(_GhostPitchPainter old) => old.pulse != pulse;
 }
 
-// ─── Space Particles ──────────────────────────────────────────────────────
-enum _ParticleKind { dot, crosshair, miniPitch, passLine, triangle, ring }
+// ─── Space Particles (with trig lookup table) ────────────────────────────
+enum _ParticleKind { dot, crosshair, triangle }
 
 class _Particle {
   double x,
@@ -874,6 +960,23 @@ class _Particle {
   }) : age = 0;
 }
 
+class _TrigTable {
+  static const int _size = 256;
+  static final List<double> _sinTable = List.generate(
+    _size,
+    (i) => math.sin(2 * math.pi * i / _size),
+  );
+  static final List<double> _cosTable = List.generate(
+    _size,
+    (i) => math.cos(2 * math.pi * i / _size),
+  );
+
+  static double sin(double x) =>
+      _sinTable[((x / (2 * math.pi) * _size).floor() % _size).toInt()];
+  static double cos(double x) =>
+      _cosTable[((x / (2 * math.pi) * _size).floor() % _size).toInt()];
+}
+
 class _SpaceParticles extends StatefulWidget {
   const _SpaceParticles();
   @override
@@ -886,8 +989,9 @@ class _SpaceParticlesState extends State<_SpaceParticles>
   final List<_Particle> _particles = [];
   Duration _lastTime = Duration.zero;
   final _rng = math.Random();
-  static const _count = 32;
+  static const _count = 16;
   late final _ParticleNotifier _notifier;
+  bool _visible = true;
 
   static const _particleColors = [
     AppColors.neonGlow,
@@ -935,6 +1039,7 @@ class _SpaceParticlesState extends State<_SpaceParticles>
   }
 
   void _tick(Duration elapsed) {
+    if (!_visible) return;
     if (_lastTime == Duration.zero) {
       _lastTime = elapsed;
       return;
@@ -950,12 +1055,12 @@ class _SpaceParticlesState extends State<_SpaceParticles>
       }
       p.x +=
           p.vx * dt +
-          math.sin(p.driftPhaseX + p.age * p.driftFreqX * math.pi * 2) *
+          _TrigTable.sin(p.driftPhaseX + p.age * p.driftFreqX * math.pi * 2) *
               p.driftAmpX *
               dt;
       p.y +=
           p.vy * dt +
-          math.cos(p.driftPhaseY + p.age * p.driftFreqY * math.pi * 2) *
+          _TrigTable.cos(p.driftPhaseY + p.age * p.driftFreqY * math.pi * 2) *
               p.driftAmpY *
               dt;
       if (p.x < -0.15) p.x = 1.15;
@@ -975,9 +1080,21 @@ class _SpaceParticlesState extends State<_SpaceParticles>
   }
 
   @override
-  Widget build(BuildContext context) => CustomPaint(
-    painter: _ParticlePainter(particles: _particles, repaint: _notifier),
-    child: const SizedBox.expand(),
+  Widget build(BuildContext context) => VisibilityDetector(
+    key: const Key('space_particles'),
+    onVisibilityChanged: (info) {
+      final visible = info.visibleFraction > 0.01;
+      if (visible != _visible) {
+        _visible = visible;
+        if (!_visible) {
+          _lastTime = Duration.zero; // avoid jump when resuming
+        }
+      }
+    },
+    child: CustomPaint(
+      painter: _ParticlePainter(particles: _particles, repaint: _notifier),
+      child: const SizedBox.expand(),
+    ),
   );
 }
 
@@ -1036,33 +1153,6 @@ class _ParticlePainter extends CustomPainter {
         canvas.drawLine(Offset(gap, 0), Offset(r + 4, 0), lp);
         canvas.drawLine(Offset(0, -r - 4), Offset(0, -gap), lp);
         canvas.drawLine(Offset(0, gap), Offset(0, r + 4), lp);
-      case _ParticleKind.miniPitch:
-        final pw = 26.0 * s;
-        final ph = 18.0 * s;
-        final lp = _strokePaint(c, s, w: 0.7);
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromCenter(center: Offset.zero, width: pw, height: ph),
-            Radius.circular(2 * s),
-          ),
-          lp,
-        );
-        canvas.drawLine(Offset(0, -ph / 2), Offset(0, ph / 2), lp);
-        canvas.drawCircle(Offset.zero, ph * 0.22, _strokePaint(c, s, w: 0.6));
-      case _ParticleKind.passLine:
-        final pts = [
-          Offset(-12 * s, -6 * s),
-          Offset(4 * s, -10 * s),
-          Offset(14 * s, 2 * s),
-          Offset(-2 * s, 9 * s),
-        ];
-        final lp = _strokePaint(c, s, w: 0.7);
-        for (int i = 0; i < pts.length - 1; i++) {
-          canvas.drawLine(pts[i], pts[i + 1], lp);
-        }
-        for (final pt in pts) {
-          canvas.drawCircle(pt, 2.2 * s, Paint()..color = c);
-        }
       case _ParticleKind.triangle:
         final r = 7.0 * s;
         final path = Path()
@@ -1071,134 +1161,17 @@ class _ParticlePainter extends CustomPainter {
           ..lineTo(-r * 0.87, r * 0.5)
           ..close();
         canvas.drawPath(path, _strokePaint(c, s));
-      case _ParticleKind.ring:
-        final r1 = 5.0 * s;
-        canvas.drawCircle(Offset.zero, r1, _strokePaint(c, s, w: 0.6));
-        canvas.drawCircle(
-          Offset.zero,
-          r1 * 1.8,
-          _strokePaint(p.color.withValues(alpha: alpha * 0.45), s, w: 0.5),
-        );
-        canvas.drawCircle(Offset.zero, r1 * 0.35, Paint()..color = c);
     }
   }
 
   @override
-  bool shouldRepaint(_ParticlePainter old) => false; // repaint driven by ChangeNotifier
-}
-
-// ─── Morphing Background ──────────────────────────────────────────────────
-class _MorphingBackground extends StatelessWidget {
-  final double scrollOffset;
-  const _MorphingBackground({required this.scrollOffset});
-  @override
-  Widget build(BuildContext context) =>
-      CustomPaint(painter: _MorphBgPainter(scroll: scrollOffset));
-}
-
-class _MorphBgPainter extends CustomPainter {
-  final double scroll;
-  const _MorphBgPainter({required this.scroll});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final t = Curves.easeInOutCubic.transform((scroll / 420).clamp(0.0, 1.0));
-    final pT = h * 0.05 + t * h * 0.55;
-    final pB = h * 0.52 + t * h * 0.55;
-    final pL = w * 0.08;
-    final pR = w * 0.92;
-    final op = (0.06 - t * 0.04).clamp(0.0, 0.1);
-    final sOp = (0.14 - t * 0.10).clamp(0.0, 0.18);
-    final pH = pB - pT;
-    final pW = pR - pL;
-
-    if (op > 0.001) {
-      final pitchRect = Rect.fromLTRB(pL, pT, pR, pB);
-      final rr = RRect.fromRectAndRadius(pitchRect, const Radius.circular(24));
-      canvas.drawRRect(
-        rr,
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.neonGlow.withValues(alpha: op * 0.8),
-              AppColors.neonGlow.withValues(alpha: op),
-              AppColors.neonGlow.withValues(alpha: op * 0.4),
-            ],
-          ).createShader(pitchRect),
-      );
-      canvas.drawRRect(
-        rr,
-        Paint()
-          ..color = AppColors.neonGlow.withValues(alpha: sOp)
-          ..strokeWidth = 1.2
-          ..style = PaintingStyle.stroke,
-      );
-      final midY = pT + pH / 2;
-      canvas.drawLine(
-        Offset(pL, midY),
-        Offset(pR, midY),
-        Paint()
-          ..color = AppColors.neonGlow.withValues(alpha: sOp * 0.7)
-          ..strokeWidth = 0.8,
-      );
-      canvas.drawCircle(
-        Offset(pL + pW / 2, midY),
-        pH * 0.16,
-        Paint()
-          ..color = AppColors.neonGlow.withValues(alpha: sOp * 0.5)
-          ..strokeWidth = 0.8
-          ..style = PaintingStyle.stroke,
-      );
-      for (final rect in [
-        Rect.fromLTRB(pL, pT + pH * 0.3, pL + pW * 0.2, pB - pH * 0.3),
-        Rect.fromLTRB(pR - pW * 0.2, pT + pH * 0.3, pR, pB - pH * 0.3),
-      ]) {
-        canvas.drawRect(
-          rect,
-          Paint()
-            ..color = AppColors.neonGlow.withValues(alpha: sOp * 0.45)
-            ..strokeWidth = 0.7
-            ..style = PaintingStyle.stroke,
-        );
-      }
-    }
-
-    // Scrolling grid
-    final gridPaint = Paint()
-      ..color = AppColors.grid.withValues(alpha: 0.07)
-      ..strokeWidth = 0.4;
-    const step = 48.0;
-    final shift = (scroll * 0.2) % step;
-    for (double x = -shift; x < w; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, h), gridPaint);
-    }
-    for (double y = -shift; y < h; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(w, y), gridPaint);
-    }
-
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, w, h),
-      Paint()
-        ..shader = RadialGradient(
-          colors: [
-            Colors.transparent,
-            AppColors.background.withValues(alpha: 0.78),
-          ],
-          radius: 0.85,
-        ).createShader(Rect.fromLTWH(0, 0, w, h)),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_MorphBgPainter old) => old.scroll != scroll;
+  bool shouldRepaint(_ParticlePainter old) => false;
 }
 
 // ─── Scan Line ──────────────────────────────────────────────────────────────
 class _ScanLine extends StatefulWidget {
+  const _ScanLine();
+
   @override
   State<_ScanLine> createState() => _ScanLineState();
 }
@@ -1223,42 +1196,46 @@ class _ScanLineState extends State<_ScanLine>
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _ctrl,
-    builder: (_, __) {
-      final h = MediaQuery.of(context).size.height;
-      return SizedBox(
-        height: h,
-        child: CustomPaint(
-          painter: _ScanLinePainter(progress: _ctrl.value, screenH: h),
+  Widget build(BuildContext context) {
+    final screenH = MediaQuery.of(context).size.height;
+    return SizedBox(
+      height: screenH,
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (_, __) => CustomPaint(
+          painter: _ScanLinePainter(progress: _ctrl.value, screenH: screenH),
         ),
-      );
-    },
-  );
+      ),
+    );
+  }
 }
 
 class _ScanLinePainter extends CustomPainter {
   final double progress, screenH;
-  const _ScanLinePainter({required this.progress, required this.screenH});
+  ui.Shader? _cachedShader;
+  Size? _lastSize;
+
+  _ScanLinePainter({required this.progress, required this.screenH});
 
   @override
   void paint(Canvas canvas, Size size) {
     final y = progress * screenH * 1.3 - screenH * 0.15;
     void drawLine(double dy, double h, double alpha) {
-      canvas.drawRect(
-        Rect.fromLTWH(0, y + dy, size.width, h),
-        Paint()
-          ..shader = LinearGradient(
-            stops: const [0, 0.25, 0.5, 0.75, 1],
-            colors: [
-              Colors.transparent,
-              AppColors.neonGlow.withValues(alpha: alpha * 0.4),
-              AppColors.neonGlow.withValues(alpha: alpha),
-              AppColors.neonGlow.withValues(alpha: alpha * 0.4),
-              Colors.transparent,
-            ],
-          ).createShader(Rect.fromLTWH(0, y + dy, size.width, h)),
-      );
+      final rect = Rect.fromLTWH(0, y + dy, size.width, h);
+      if (_cachedShader == null || _lastSize != size) {
+        _lastSize = size;
+        _cachedShader = LinearGradient(
+          stops: const [0, 0.25, 0.5, 0.75, 1],
+          colors: [
+            Colors.transparent,
+            AppColors.neonGlow.withValues(alpha: alpha * 0.4),
+            AppColors.neonGlow.withValues(alpha: alpha),
+            AppColors.neonGlow.withValues(alpha: alpha * 0.4),
+            Colors.transparent,
+          ],
+        ).createShader(rect);
+      }
+      canvas.drawRect(rect, Paint()..shader = _cachedShader);
     }
 
     drawLine(0, 2.5, 0.10);
@@ -1269,13 +1246,13 @@ class _ScanLinePainter extends CustomPainter {
   bool shouldRepaint(_ScanLinePainter old) => old.progress != progress;
 }
 
-// ─── Hero Section ──────────────────────────────────────────────────────────
+// ─── Hero Section ─────────────────────────────────────────────────────────
 class _HeroSection extends StatefulWidget {
-  final double scrollProgress;
+  final ValueNotifier<double> scrollProgressNotifier;
   final ValueNotifier<String> formationNotifier;
   final ValueNotifier<bool> editModeNotifier;
   const _HeroSection({
-    required this.scrollProgress,
+    required this.scrollProgressNotifier,
     required this.formationNotifier,
     required this.editModeNotifier,
   });
@@ -1303,79 +1280,107 @@ class _HeroSectionState extends State<_HeroSection> {
     final screenWidth = mq.size.width;
     final screenHeight = mq.size.height;
     final isLandscape = screenWidth > screenHeight;
-    // Wide = tablet/desktop portrait or any landscape >= 600
     final isWide = screenWidth > 700 || (isLandscape && screenWidth > 500);
-    final boardT = _snapCurve.transform(
-      (widget.scrollProgress / 0.6).clamp(0.0, 1.0),
-    );
-    final statsT = _snapCurve.transform(
-      ((widget.scrollProgress - 0.15) / 0.75).clamp(0.0, 1.0),
-    );
 
-    Widget board = Opacity(
-      opacity: isLandscape ? 1.0 : (1.0 - boardT * 0.7).clamp(0.0, 1.0),
-      child: isLandscape
-          ? Center(
-              child: FloatingTacticBoard(
-                onFormationChanged: _onFormationChanged,
-                editModeNotifier: widget.editModeNotifier,
-              ),
-            )
-          : Transform(
-              alignment: Alignment.center,
-              transform: Matrix4.identity()
-                ..setEntry(3, 2, 0.0009)
-                ..translateByDouble(0.0, boardT * -28.0, 0.0, 1.0)
-                ..rotateX(boardT * 36.0 * math.pi / 180)
-                ..scaleByDouble(
-                  1.0 - boardT * 0.13,
-                  1.0 - boardT * 0.13,
-                  1.0,
-                  1.0,
-                ),
-              child: Center(
-                child: FloatingTacticBoard(
-                  onFormationChanged: _onFormationChanged,
-                  editModeNotifier: widget.editModeNotifier,
-                ),
-              ),
+    return ValueListenableBuilder<double>(
+      valueListenable: widget.scrollProgressNotifier,
+      builder: (_, scrollProgress, child) {
+        final boardT = _snapCurve.transform(
+          (scrollProgress / 0.6).clamp(0.0, 1.0),
+        );
+        final statsT = _snapCurve.transform(
+          ((scrollProgress - 0.15) / 0.75).clamp(0.0, 1.0),
+        );
+
+        Widget board = _BoardTransform(
+          boardT: boardT,
+          isLandscape: isLandscape,
+          child: Center(
+            child: FloatingTacticBoard(
+              onFormationChanged: _onFormationChanged,
+              editModeNotifier: widget.editModeNotifier,
             ),
-    );
+          ),
+        );
 
-    Widget stats = Opacity(
-      opacity: (1.0 - statsT * 0.3).clamp(0.0, 1.0),
-      child: Transform(
-        alignment: Alignment.topCenter,
-        transform: Matrix4.identity()
-          ..translateByDouble(0.0, statsT * -12.0, 0.0, 1.0)
-          ..scaleByDouble(1.0 - statsT * 0.05, 1.0 - statsT * 0.05, 1.0, 1.0),
-        child: StatsPanel(formation: _currentFormation),
-      ),
-    );
+        Widget stats = _StatsTransform(
+          statsT: statsT,
+          child: StatsPanel(formation: _currentFormation),
+        );
 
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: isWide ? 36 : 20,
-        vertical: isWide ? 36 : 28,
-      ),
-      child: isWide
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(flex: 5, child: board),
-                const SizedBox(width: 36),
-                Expanded(flex: 4, child: stats),
-              ],
-            )
-          : Column(children: [board, const SizedBox(height: 36), stats]),
+        return Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: isWide ? 36 : 20,
+            vertical: isWide ? 36 : 28,
+          ),
+          child: isWide
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(flex: 5, child: board),
+                    const SizedBox(width: 36),
+                    Expanded(flex: 4, child: stats),
+                  ],
+                )
+              : Column(children: [board, const SizedBox(height: 36), stats]),
+        );
+      },
+    );
+  }
+}
+
+class _BoardTransform extends StatelessWidget {
+  final double boardT;
+  final bool isLandscape;
+  final Widget child;
+
+  const _BoardTransform({
+    required this.boardT,
+    required this.isLandscape,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLandscape) {
+      return Opacity(opacity: 1.0, child: child);
+    }
+    final opacity = (1.0 - boardT * 0.7).clamp(0.0, 1.0);
+    return Transform(
+      alignment: Alignment.center,
+      transform: Matrix4.identity()
+        ..setEntry(3, 2, 0.0009)
+        ..translateByDouble(0.0, boardT * -28.0, 0.0, 1.0)
+        ..rotateX(boardT * 36.0 * math.pi / 180)
+        ..scaleByDouble(1.0 - boardT * 0.13, 1.0 - boardT * 0.13, 1.0, 1.0),
+      child: Opacity(opacity: opacity, child: child),
+    );
+  }
+}
+
+class _StatsTransform extends StatelessWidget {
+  final double statsT;
+  final Widget child;
+
+  const _StatsTransform({required this.statsT, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final opacity = (1.0 - statsT * 0.3).clamp(0.0, 1.0);
+    return Transform(
+      alignment: Alignment.topCenter,
+      transform: Matrix4.identity()
+        ..translateByDouble(0.0, statsT * -12.0, 0.0, 1.0)
+        ..scaleByDouble(1.0 - statsT * 0.05, 1.0 - statsT * 0.05, 1.0, 1.0),
+      child: Opacity(opacity: opacity, child: child),
     );
   }
 }
 
 // ─── Info Section ──────────────────────────────────────────────────────────
 class _InfoSection extends StatelessWidget {
-  final double scrollOffset;
-  const _InfoSection({required this.scrollOffset});
+  final ValueNotifier<double> rawOffsetNotifier;
+  const _InfoSection({required this.rawOffsetNotifier});
 
   static const _cardData = [
     (
@@ -1426,11 +1431,13 @@ class _InfoSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 60),
             _MorphReveal(
-              scrollOffset: scrollOffset,
+              offsetNotifier: rawOffsetNotifier,
               triggerAt: 200,
               child: Text(
                 '── ABOUT THIS BOARD',
+
                 style: TextStyle(
                   fontSize: 10,
                   color: AppColors.neonGlow.withValues(alpha: 0.45),
@@ -1445,7 +1452,7 @@ class _InfoSection extends StatelessWidget {
                 final cards = _cardData
                     .map(
                       (d) => _MorphReveal(
-                        scrollOffset: scrollOffset,
+                        offsetNotifier: rawOffsetNotifier,
                         triggerAt: 280,
                         delayMs: d.delay,
                         child: _InfoCard(
@@ -1492,7 +1499,7 @@ class _InfoSection extends StatelessWidget {
             ),
             const SizedBox(height: 44),
             _MorphReveal(
-              scrollOffset: scrollOffset,
+              offsetNotifier: rawOffsetNotifier,
               triggerAt: 360,
               delayMs: 100,
               child: const _BottomStatStrip(),
@@ -1508,11 +1515,12 @@ class _InfoSection extends StatelessWidget {
 // ─── Morph Reveal ──────────────────────────────────────────────────────────
 class _MorphReveal extends StatefulWidget {
   final Widget child;
-  final double scrollOffset, triggerAt;
+  final ValueNotifier<double> offsetNotifier;
+  final double triggerAt;
   final int delayMs;
   const _MorphReveal({
     required this.child,
-    required this.scrollOffset,
+    required this.offsetNotifier,
     required this.triggerAt,
     this.delayMs = 0,
   });
@@ -1521,56 +1529,41 @@ class _MorphReveal extends StatefulWidget {
   State<_MorphReveal> createState() => _MorphRevealState();
 }
 
-class _MorphRevealState extends State<_MorphReveal>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _opacity, _translateY, _scale;
-  bool _triggered = false;
+class _MorphRevealState extends State<_MorphReveal> {
+  bool _visible = false;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 750),
-    );
-    final curved = CurvedAnimation(parent: _ctrl, curve: _morphCurve);
-    _opacity = curved;
-    _translateY = Tween(begin: 30.0, end: 0.0).animate(curved);
-    _scale = Tween(begin: 0.93, end: 1.0).animate(curved);
+    widget.offsetNotifier.addListener(_checkTrigger);
+    _checkTrigger();
   }
 
-  @override
-  void didUpdateWidget(_MorphReveal old) {
-    super.didUpdateWidget(old);
-    if (!_triggered && widget.scrollOffset >= widget.triggerAt) {
-      _triggered = true;
+  void _checkTrigger() {
+    if (!_visible && widget.offsetNotifier.value >= widget.triggerAt) {
       Future.delayed(Duration(milliseconds: widget.delayMs), () {
-        if (mounted) _ctrl.forward();
+        if (mounted) setState(() => _visible = true);
       });
     }
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    widget.offsetNotifier.removeListener(_checkTrigger);
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _ctrl,
-    builder: (_, child) => Opacity(
-      opacity: _opacity.value,
-      child: Transform(
-        alignment: Alignment.topCenter,
-        transform: Matrix4.identity()
-          ..translateByDouble(0.0, _translateY.value, 0.0, 1.0)
-          ..scaleByDouble(_scale.value, _scale.value, 1.0, 1.0),
-        child: child,
-      ),
+  Widget build(BuildContext context) => AnimatedOpacity(
+    opacity: _visible ? 1.0 : 0.0,
+    duration: const Duration(milliseconds: 750),
+    curve: Curves.easeOut,
+    child: AnimatedSlide(
+      offset: _visible ? Offset.zero : const Offset(0, 0.08),
+      duration: const Duration(milliseconds: 750),
+      curve: Curves.easeOut,
+      child: widget.child,
     ),
-    child: widget.child,
   );
 }
 
@@ -1593,10 +1586,12 @@ class _InfoCardState extends State<_InfoCard>
     with SingleTickerProviderStateMixin {
   late final AnimationController _hover;
   late final Animation<double> _hoverT, _iconScale, _shimmer;
+  late final String _titleUpper;
 
   @override
   void initState() {
     super.initState();
+    _titleUpper = widget.title.toUpperCase();
     _hover = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 380),
@@ -1694,7 +1689,7 @@ class _InfoCardState extends State<_InfoCard>
                             const SizedBox(width: 10),
                             Flexible(
                               child: Text(
-                                widget.title.toUpperCase(),
+                                _titleUpper,
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
@@ -1935,99 +1930,58 @@ class _AnimatedStatItemState extends State<_AnimatedStatItem>
 }
 
 // ─── Score Ticker ──────────────────────────────────────────────────────────
-class _ScoreTicker extends StatefulWidget {
+class _ScoreTicker extends StatelessWidget {
   const _ScoreTicker();
-  @override
-  State<_ScoreTicker> createState() => _ScoreTickerState();
-}
-
-class _ScoreTickerState extends State<_ScoreTicker>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  int _minute = 67;
 
   @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 5));
-      if (!mounted) return false;
-      setState(() {
-        if (_minute < 90) _minute++;
-      });
-      return mounted;
-    });
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _ctrl,
-    builder: (_, __) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: AppColors.neonGlow.withValues(
-            alpha: 0.14 + _ctrl.value * 0.10,
-          ),
-        ),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.frame.withValues(alpha: 0.90),
-            AppColors.grid.withValues(alpha: 0.45),
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.neonGlow.withValues(
-              alpha: 0.06 + _ctrl.value * 0.04,
-            ),
-            blurRadius: 20,
-          ),
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: AppColors.neonGlow.withValues(alpha: 0.14)),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          AppColors.frame.withValues(alpha: 0.90),
+          AppColors.grid.withValues(alpha: 0.45),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _TeamScore(code: 'FCN', score: '2', color: AppColors.teamA),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: Column(
-              children: [
-                _LiveBadge(pulse: _ctrl.value),
-                const SizedBox(height: 4),
-                Text(
-                  "$_minute'",
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontFamily: 'monospace',
-                    color: AppColors.hologram.withValues(alpha: 0.7),
-                  ),
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.neonGlow.withValues(alpha: 0.06),
+          blurRadius: 20,
+        ),
+      ],
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const _TeamScore(code: 'FCN', score: '2', color: AppColors.teamA),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 18),
+          child: Column(
+            children: [
+              _LiveBadge(pulse: 0.0),
+              SizedBox(height: 4),
+              Text(
+                "67'",
+                style: TextStyle(
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  color: AppColors.hologram,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          _TeamScore(code: 'RKC', score: '1', color: AppColors.teamB),
-        ],
-      ),
+        ),
+        const _TeamScore(code: 'RKC', score: '1', color: AppColors.teamB),
+      ],
     ),
   );
 }
 
-// ─── Shared Live Badge (dot + text) ─────────────────────────────────────────
 class _LiveBadge extends StatelessWidget {
   final double pulse;
   const _LiveBadge({required this.pulse});
@@ -2139,7 +2093,7 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
     super.initState();
     _levitate = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3800),
+      duration: const Duration(milliseconds: 6000),
     )..repeat(reverse: true);
     _pulse = AnimationController(
       vsync: this,
@@ -2151,7 +2105,7 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
     );
     _passAnim = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 8000),
+      duration: const Duration(milliseconds: 20000),
     )..repeat();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _recomputeFormation();
@@ -2223,7 +2177,6 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
   void _toggleExpand() {
     setState(() {
       _expanded = !_expanded;
-      // Exiting fullscreen also exits edit mode
       if (!_expanded && _dragMode) {
         _dragMode = false;
         _selectedPlayer = null;
@@ -2241,7 +2194,6 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
   }
 
   String _cachedFormation = "4-2-3-1";
-
   String get _formationString => _cachedFormation;
 
   void _recomputeFormation() {
@@ -2252,6 +2204,51 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
       (i) => _customPositions[i] ?? _defaultPositions[i](pitchW, pitchH),
     );
     _cachedFormation = FormationAnalyzer.detect(positions, pitchW);
+  }
+
+  // Small UI chip used in the board controls – renamed to lowerCamelCase
+  Widget _readoutChip({required String label, required String value}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppColors.neonGlow.withValues(alpha: 0.18),
+          width: 1.0,
+        ),
+        color: AppColors.frame.withValues(alpha: 0.35),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.neonGlow.withValues(alpha: 0.06),
+            blurRadius: 14,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 8,
+              letterSpacing: 2.2,
+              color: AppColors.neonGlow.withValues(alpha: 0.65),
+              fontFamily: 'monospace',
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildBoardContent(Size screenSize, {bool rotateNumbers = false}) {
@@ -2276,7 +2273,6 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
     final isLandscape = screenSize.width > screenSize.height;
     final isMobileLandscape = isLandscape && screenSize.height < 500;
 
-    // In landscape mobile, use a compact horizontal layout
     if (isMobileLandscape) {
       return Stack(
         children: [
@@ -2284,17 +2280,17 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Board
-              AnimatedBuilder(
-                animation: _formAnim,
-                builder: (_, child) => Transform.scale(
-                  scale: 1.0 - _formAnim.value * 0.02,
-                  child: child,
+              RepaintBoundary(
+                child: AnimatedBuilder(
+                  animation: _formAnim,
+                  builder: (_, child) => Transform.scale(
+                    scale: 1.0 - _formAnim.value * 0.02,
+                    child: child,
+                  ),
+                  child: _buildBoardContent(screenSize),
                 ),
-                child: _buildBoardContent(screenSize),
               ),
               const SizedBox(width: 12),
-              // Controls column on the right
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
@@ -2306,7 +2302,7 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _ReadoutChip(label: 'FMT', value: _formationString),
+                      _readoutChip(label: 'FMT', value: _formationString),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -2371,7 +2367,6 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
       );
     }
 
-    // Portrait / desktop layout
     final boardColumn = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2386,24 +2381,18 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
         AnimatedBuilder(
           animation: Listenable.merge([_levitate, _formAnim]),
           builder: (_, child) => Transform.translate(
-            offset: Offset(0, math.sin(_levitate.value * math.pi) * -18),
+            offset: Offset(0, math.sin(_levitate.value * math.pi) * -8),
             child: Transform.scale(
               scale: 1.0 - _formAnim.value * 0.02,
               child: child,
             ),
           ),
-          child: _buildBoardContent(screenSize),
+          child: RepaintBoundary(child: _buildBoardContent(screenSize)),
         ),
         const SizedBox(height: 10),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const _ReadoutChip(label: 'TILT X', value: '0°'),
-            const SizedBox(width: 28),
-            const _ReadoutChip(label: 'TILT Y', value: '0°'),
-            const SizedBox(width: 28),
-            _ReadoutChip(label: 'FORMATION', value: _formationString),
-          ],
+          children: [_readoutChip(label: 'FORMATION', value: _formationString)],
         ),
         const SizedBox(height: 8),
         Row(
@@ -2511,33 +2500,12 @@ class _FullscreenOverlay extends StatelessWidget {
     final w = mq.width;
     final h = mq.height;
 
-    // Board intrinsic size: 336 × 252 (landscape card)
-    const boardW = 336.0;
-    const boardH = 252.0;
-    const padding = 32.0;
+    Widget board = SizedBox(
+      width: w - 32,
+      height: h - 32,
+      child: FittedBox(fit: BoxFit.contain, child: child),
+    );
 
-    // Use FittedBox instead of Transform.scale so the render-box layout size
-    // matches the visible scaled area.  Transform.scale only paints at the new
-    // size but keeps the original layout box, so hit-testing fires in the
-    // wrong region — tapping RB/LB/GK in fullscreen on mobile never registers.
-    Widget board;
-    if (isMobile) {
-      // Board will be rotated 90° CCW — swap axes so it fills portrait screen.
-      // Constrain to the available portrait space (w × h minus padding).
-      board = SizedBox(
-        width: w - padding * 2,
-        height: h - padding * 2,
-        child: FittedBox(fit: BoxFit.contain, child: child),
-      );
-    } else {
-      board = SizedBox(
-        width: w - padding * 2,
-        height: h - padding * 2,
-        child: FittedBox(fit: BoxFit.contain, child: child),
-      );
-    }
-
-    // On mobile: rotate 90° CCW so the landscape board fills portrait screen.
     final content = isMobile
         ? RotatedBox(quarterTurns: 3, child: board)
         : board;
@@ -2549,15 +2517,12 @@ class _FullscreenOverlay extends StatelessWidget {
           color: AppColors.background.withValues(alpha: 0.96),
           child: Stack(
             children: [
-              // Subtle grid background inside overlay
               Positioned.fill(
                 child: IgnorePointer(
                   child: CustomPaint(painter: _OverlayGridPainter()),
                 ),
               ),
-              // Centred board
               Center(child: content),
-              // Top bar: edit controls (left) + close button (right)
               Positioned(
                 top: 0,
                 left: 0,
@@ -2570,7 +2535,6 @@ class _FullscreenOverlay extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        // Edit mode toggle
                         _OverlayIconBtn(
                           icon: dragMode ? Icons.edit_off : Icons.edit,
                           color: dragMode
@@ -2601,7 +2565,6 @@ class _FullscreenOverlay extends StatelessWidget {
                           ),
                         ],
                         const SizedBox(width: 8),
-                        // Status label
                         Text(
                           dragMode
                               ? 'DRAG PLAYERS  ·  GK LOCKED'
@@ -2617,14 +2580,12 @@ class _FullscreenOverlay extends StatelessWidget {
                           ),
                         ),
                         const Spacer(),
-                        // Close button
                         _ExitFullscreenBtn(onTap: onClose),
                       ],
                     ),
                   ),
                 ),
               ),
-              // Corner brackets decoration
               Positioned.fill(
                 child: IgnorePointer(child: _OverlayCornerBrackets()),
               ),
@@ -2636,7 +2597,6 @@ class _FullscreenOverlay extends StatelessWidget {
   }
 }
 
-// ─── Overlay Icon Button ────────────────────────────────────────────────────
 class _OverlayIconBtn extends StatelessWidget {
   final IconData icon;
   final Color color;
@@ -2686,7 +2646,7 @@ class _OverlayGridPainter extends CustomPainter {
     final paint = Paint()
       ..color = AppColors.grid.withValues(alpha: 0.06)
       ..strokeWidth = 0.5;
-    const step = 48.0;
+    const step = 64.0;
     for (double x = 0; x < size.width; x += step) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
@@ -2696,7 +2656,7 @@ class _OverlayGridPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_OverlayGridPainter _) => false;
+  bool shouldRepaint(_OverlayGridPainter old) => false;
 }
 
 class _OverlayCornerBrackets extends StatelessWidget {
@@ -2925,20 +2885,22 @@ class _TiltCard extends StatelessWidget {
           Center(
             child: Padding(
               padding: const EdgeInsets.all(14),
-              child: PitchWidget(
-                pulseAnim: pulseAnim,
-                passAnim: passAnim,
-                selectedPlayer: selectedPlayer,
-                onPlayerTapped: onPlayerTapped,
-                dragModeEnabled: dragModeEnabled,
-                customPositions: customPositions,
-                onPlayerDragged: onPlayerDragged,
-                showHeatmap: showHeatmap,
-                rotateNumbers: rotateNumbers,
+              child: RepaintBoundary(
+                child: PitchWidget(
+                  pulseAnim: pulseAnim,
+                  passAnim: passAnim,
+                  selectedPlayer: selectedPlayer,
+                  onPlayerTapped: onPlayerTapped,
+                  dragModeEnabled: dragModeEnabled,
+                  customPositions: customPositions,
+                  onPlayerDragged: onPlayerDragged,
+                  showHeatmap: showHeatmap,
+                  rotateNumbers: rotateNumbers,
+                ),
               ),
             ),
           ),
-          const Positioned.fill(
+          Positioned.fill(
             child: IgnorePointer(
               child: CustomPaint(
                 painter: _HoloPainter(specularX: 0.5, specularY: 0.5),
@@ -2988,33 +2950,39 @@ class _TiltCard extends StatelessWidget {
   );
 }
 
-// ─── Holo Painter ───────────────────────────────────────────────────────────
+// ─── Holo Painter (cached shaders) ─────────────────────────────────────────
 class _HoloPainter extends CustomPainter {
   final double specularX, specularY;
-  const _HoloPainter({required this.specularX, required this.specularY});
+  ui.Shader? _cachedShader1;
+  ui.Shader? _cachedShader2;
+
+  _HoloPainter({required this.specularX, required this.specularY});
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    final hue = (specularX * 180 + specularY * 120) % 360;
-    final color = HSVColor.fromAHSV(1.0, hue, 0.6, 1.0).toColor();
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = RadialGradient(
-          center: Alignment(specularX * 2 - 1, specularY * 2 - 1),
-          radius: 1.2,
-          colors: [color.withValues(alpha: 0.06), Colors.transparent],
-        ).createShader(rect),
-    );
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = RadialGradient(
-          radius: 0.9,
-          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.22)],
-        ).createShader(rect),
-    );
+
+    _cachedShader1 ??= RadialGradient(
+      center: Alignment(specularX * 2 - 1, specularY * 2 - 1),
+      radius: 1.2,
+      colors: [
+        HSVColor.fromAHSV(
+          1.0,
+          (specularX * 180 + specularY * 120) % 360,
+          0.6,
+          1.0,
+        ).toColor().withValues(alpha: 0.06),
+        Colors.transparent,
+      ],
+    ).createShader(rect);
+
+    _cachedShader2 ??= RadialGradient(
+      radius: 0.9,
+      colors: [Colors.transparent, Colors.black.withValues(alpha: 0.22)],
+    ).createShader(rect);
+
+    canvas.drawRect(rect, Paint()..shader = _cachedShader1);
+    canvas.drawRect(rect, Paint()..shader = _cachedShader2);
   }
 
   @override
@@ -3052,10 +3020,6 @@ class PitchWidget extends StatefulWidget {
 
 class _PitchWidgetState extends State<PitchWidget> {
   int? _draggingPlayer;
-  // These MUST live in state — NOT inside the AnimatedBuilder callback.
-  // The builder runs every animation frame (~16 ms), so any local variable
-  // declared inside it gets reset before onPointerUp fires, silently
-  // swallowing taps on every player (most visible for GK, RB, LB).
   int? _pendingTapHit;
   Offset? _downPos;
 
@@ -3065,7 +3029,6 @@ class _PitchWidgetState extends State<PitchWidget> {
   );
 
   int? _hitTest(Offset localPosition) {
-    // Generous threshold for touch — edge players (RB/LB) are near the border
     const threshold = 34.0;
     final positions = _getPositions();
     double bestDist = threshold;
@@ -3086,14 +3049,12 @@ class _PitchWidgetState extends State<PitchWidget> {
     if (hit == null) return;
     _pendingTapHit = hit;
     if (hit != 0) {
-      // Only non-GK players start a drag
       setState(() => _draggingPlayer = hit);
     }
   }
 
   void _handlePointerMove(PointerMoveEvent e) {
     if (_draggingPlayer != null) {
-      // Clear tap candidate once the finger has moved beyond slop
       if (_downPos != null && (e.localPosition - _downPos!).distance > 8.0) {
         _pendingTapHit = null;
       }
@@ -3107,7 +3068,6 @@ class _PitchWidgetState extends State<PitchWidget> {
 
   void _handlePointerUp(PointerUpEvent e) {
     if (_pendingTapHit != null) {
-      // Short tap with no significant drag → show info label
       widget.onPlayerTapped(_pendingTapHit);
       _pendingTapHit = null;
     }
@@ -3123,9 +3083,6 @@ class _PitchWidgetState extends State<PitchWidget> {
 
   @override
   Widget build(BuildContext context) {
-    // The Listener/GestureDetector is built OUTSIDE the AnimatedBuilder so it
-    // is never recreated mid-gesture.  Only the CustomPaint (which needs the
-    // animation values) lives inside the builder.
     if (widget.dragModeEnabled) {
       return Listener(
         behavior: HitTestBehavior.opaque,
@@ -3177,8 +3134,6 @@ class _PitchWidgetState extends State<PitchWidget> {
 }
 
 // ─── Pitch Painter ──────────────────────────────────────────────────────────
-
-// Cache laid-out TextPainters for jersey numbers — these never change.
 final _cachedJerseyPainters = <int, TextPainter>{};
 TextPainter _jerseyPainter(int num) => _cachedJerseyPainters.putIfAbsent(
   num,
@@ -3192,6 +3147,21 @@ TextPainter _jerseyPainter(int num) => _cachedJerseyPainters.putIfAbsent(
   ),
 );
 
+final _cachedBandLabelPainters = <String, TextPainter>{};
+TextPainter _bandLabelPainter(String text, Color color) =>
+    _cachedBandLabelPainters.putIfAbsent(
+      '$text-${color.toARGB32()}',
+      () => _layoutText(
+        text,
+        TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+
 class _PitchPainter extends CustomPainter {
   final double pulse, passT;
   final int? selectedPlayer;
@@ -3201,7 +3171,7 @@ class _PitchPainter extends CustomPainter {
   final bool showHeatmap;
   final bool rotateNumbers;
 
-  const _PitchPainter({
+  _PitchPainter({
     required this.pulse,
     required this.passT,
     this.selectedPlayer,
@@ -3217,17 +3187,30 @@ class _PitchPainter extends CustomPainter {
     ..strokeWidth = width
     ..style = PaintingStyle.stroke;
 
-  List<Offset> _getPositions(double w, double h) => List.generate(
-    11,
-    (i) => customPositions[i] ?? _defaultPositions[i](w, h),
-  );
+  ui.Picture? _cachedPitchPicture;
+  Size? _cachedPitchSize;
+  List<Offset>? _cachedPositions;
+  List<Offset?>? _cachedCustomPositions;
+  List<(Offset, Offset)>? _cachedEdges;
+  List<Offset?>? _lastPositions;
 
-  @override
-  void paint(Canvas canvas, Size sz) {
-    final w = sz.width;
-    final h = sz.height;
+  List<Offset> _getPositions(double w, double h) {
+    if (_cachedCustomPositions != customPositions) {
+      _cachedCustomPositions = customPositions;
+      _cachedPositions = List.generate(
+        11,
+        (i) => customPositions[i] ?? _defaultPositions[i](w, h),
+      );
+    }
+    return _cachedPositions!;
+  }
 
-    // Stripes
+  ui.Picture _buildPitchPicture(Size size) {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final w = size.width;
+    final h = size.height;
+
     for (int i = 0; i < 8; i++) {
       canvas.drawRect(
         Rect.fromLTWH(0, i * h / 8, w, h / 8),
@@ -3239,7 +3222,6 @@ class _PitchPainter extends CustomPainter {
     }
 
     final r = Rect.fromLTWH(0, 0, w, h);
-    // Gradient overlay
     canvas.drawRRect(
       RRect.fromRectAndRadius(r, const Radius.circular(8)),
       Paint()
@@ -3247,30 +3229,24 @@ class _PitchPainter extends CustomPainter {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.neonGlow.withValues(alpha: 0.04 + pulse * 0.025),
+            AppColors.neonGlow.withValues(alpha: 0.04),
             AppColors.background.withValues(alpha: 0.25),
           ],
         ).createShader(r),
     );
-    // Outline
     canvas.drawRRect(
       RRect.fromRectAndRadius(r, const Radius.circular(7)),
       _lp(0.55, width: 1.8),
     );
 
-    // Lines & circles
     canvas.drawLine(Offset(0, h / 2), Offset(w, h / 2), _lp(0.25));
+    canvas.drawCircle(Offset(w / 2, h / 2), 34, _lp(0.18, width: 1.2));
+    canvas.drawCircle(Offset(w / 2, h / 2), 24, _lp(0.06));
     canvas.drawCircle(
       Offset(w / 2, h / 2),
-      34,
-      _lp(0.18 + pulse * 0.12, width: 1.2),
-    );
-    canvas.drawCircle(Offset(w / 2, h / 2), 24, _lp(0.06 + pulse * 0.04));
-    canvas.drawCircle(
-      Offset(w / 2, h / 2),
-      3.0 + pulse * 1.2,
+      3.0,
       Paint()
-        ..color = AppColors.neonGlow.withValues(alpha: 0.65 + pulse * 0.25)
+        ..color = AppColors.neonGlow.withValues(alpha: 0.65)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
     );
     canvas.drawCircle(
@@ -3279,7 +3255,6 @@ class _PitchPainter extends CustomPainter {
       Paint()..color = AppColors.neonGlow.withValues(alpha: 0.90),
     );
 
-    // Penalty areas
     canvas.drawRect(
       Rect.fromLTWH(0, h * 0.29, 56, h * 0.42),
       _lp(0.22, width: 1.1),
@@ -3291,7 +3266,6 @@ class _PitchPainter extends CustomPainter {
     canvas.drawRect(Rect.fromLTWH(0, h * 0.37, 20, h * 0.26), _lp(0.15));
     canvas.drawRect(Rect.fromLTWH(w - 20, h * 0.37, 20, h * 0.26), _lp(0.15));
 
-    // Goals
     canvas.drawRect(
       Rect.fromLTWH(-3, h * 0.40, 6, h * 0.20),
       _lp(0.70, width: 1.8),
@@ -3301,8 +3275,6 @@ class _PitchPainter extends CustomPainter {
       _lp(0.70, width: 1.8),
     );
 
-    // Penalty arcs — only the portion outside the penalty box is visible
-    // Left arc: penalty spot at x=46, box edge at x=56; arc faces right (into field)
     canvas.drawArc(
       Rect.fromCircle(center: Offset(46, h / 2), radius: 26),
       -math.pi / 2.5,
@@ -3310,7 +3282,6 @@ class _PitchPainter extends CustomPainter {
       false,
       _lp(0.20),
     );
-    // Right arc: penalty spot at x=w-46, box edge at x=w-56; arc faces left (into field)
     canvas.drawArc(
       Rect.fromCircle(center: Offset(w - 46, h / 2), radius: 26),
       math.pi - math.pi / 2.5,
@@ -3319,7 +3290,6 @@ class _PitchPainter extends CustomPainter {
       _lp(0.20),
     );
 
-    // Penalty spots
     for (final dx in [46.0, w - 46.0]) {
       canvas.drawCircle(
         Offset(dx, h / 2),
@@ -3328,7 +3298,6 @@ class _PitchPainter extends CustomPainter {
       );
     }
 
-    // Corner arcs
     for (final c in [Offset.zero, Offset(w, 0), Offset(0, h), Offset(w, h)]) {
       final startA =
           (c.dx > 0 ? math.pi : 0) + (c.dy > 0 ? math.pi / 2 : -math.pi / 2);
@@ -3340,6 +3309,20 @@ class _PitchPainter extends CustomPainter {
         _lp(0.20),
       );
     }
+
+    return recorder.endRecording();
+  }
+
+  @override
+  void paint(Canvas canvas, Size sz) {
+    final w = sz.width;
+    final h = sz.height;
+
+    if (_cachedPitchPicture == null || _cachedPitchSize != sz) {
+      _cachedPitchPicture = _buildPitchPicture(sz);
+      _cachedPitchSize = sz;
+    }
+    canvas.drawPicture(_cachedPitchPicture!);
 
     final posA = _getPositions(w, h);
     _drawAnimatedPassLines(canvas, posA, AppColors.teamA, passT, 0.0);
@@ -3408,14 +3391,9 @@ class _PitchPainter extends CustomPainter {
         draw = !draw;
         y += dashW + gapW;
       }
-      final labelTp = _layoutText(
+      final labelTp = _bandLabelPainter(
         labels[i],
-        TextStyle(
-          color: colors[i].withValues(alpha: 0.5),
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.2,
-        ),
+        colors[i].withValues(alpha: 0.5),
       );
       labelTp.paint(canvas, Offset(x - labelTp.width / 2, 2));
       labelTp.paint(canvas, Offset(x - labelTp.width / 2, h - 11));
@@ -3431,14 +3409,9 @@ class _PitchPainter extends CustomPainter {
           ..strokeWidth = 1.0
           ..style = PaintingStyle.stroke,
       );
-      final gkTp = _layoutText(
+      final gkTp = _bandLabelPainter(
         'GK',
-        TextStyle(
-          color: AppColors.gold.withValues(alpha: 0.4),
-          fontSize: 8,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.0,
-        ),
+        AppColors.gold.withValues(alpha: 0.4),
       );
       gkTp.paint(canvas, Offset(gkX - gkTp.width / 2, 2));
       gkTp.paint(canvas, Offset(gkX - gkTp.width / 2, h - gkTp.height - 2));
@@ -3449,10 +3422,18 @@ class _PitchPainter extends CustomPainter {
     for (final pos in positions) {
       canvas.drawCircle(
         pos,
-        30,
-        Paint()
-          ..color = AppColors.neonGlow.withValues(alpha: 0.12)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
+        38,
+        Paint()..color = AppColors.neonGlow.withValues(alpha: 0.04),
+      );
+      canvas.drawCircle(
+        pos,
+        24,
+        Paint()..color = AppColors.neonGlow.withValues(alpha: 0.07),
+      );
+      canvas.drawCircle(
+        pos,
+        12,
+        Paint()..color = AppColors.neonGlow.withValues(alpha: 0.11),
       );
     }
   }
@@ -3474,27 +3455,17 @@ class _PitchPainter extends CustomPainter {
       canvas.rotate(math.pi / 2);
     }
 
-    // Decide whether the card goes above or below based on available space.
-    // After any rotation, "above" means negative local Y.
-    // We check in the original (pre-rotation) canvas space.
     final bool flipBelow = rotateNumbers
-        ? pos.dx <
-              cardH +
-                  stemLen +
-                  8 // near left edge in original space → draw below after rotation
-        : pos.dy < cardH + stemLen + 8; // near top edge → draw below
+        ? pos.dx < cardH + stemLen + 8
+        : pos.dy < cardH + stemLen + 8;
 
-    // Decide whether the card goes right or left based on horizontal space.
     final bool flipLeft = rotateNumbers
-        ? pos.dy >
-              canvasSize.height -
-                  (cardW + 20) // near bottom after rotation
-        : pos.dx > canvasSize.width - (cardW + 20); // near right edge
+        ? pos.dy > canvasSize.height - (cardW + 20)
+        : pos.dx > canvasSize.width - (cardW + 20);
 
     final double stemDirY = flipBelow ? 1.0 : -1.0;
     final double cardBaseY = flipBelow ? stemLen : -stemLen - cardH;
 
-    // Stem line
     canvas.drawLine(
       Offset(0, stemDirY * 7),
       Offset(flipLeft ? -8 : 8, stemDirY * stemLen),
@@ -3559,12 +3530,8 @@ class _PitchPainter extends CustomPainter {
   }
 
   void _drawMovingBall(Canvas canvas, List<Offset> positions, double t) {
-    final edges = <(Offset, Offset)>[
-      for (int i = 0; i < positions.length; i++)
-        for (int j = i + 1; j < positions.length; j++)
-          if ((positions[i] - positions[j]).distance < 80)
-            (positions[i], positions[j]),
-    ];
+    final edges = _cachedEdges;
+    if (edges == null) return;
     if (edges.isEmpty) return;
     final edgeT = (t * edges.length) % edges.length;
     final localT = edgeT - edgeT.floor();
@@ -3599,6 +3566,19 @@ class _PitchPainter extends CustomPainter {
     double t,
     double phase,
   ) {
+    if (_lastPositions != customPositions || _cachedEdges == null) {
+      _lastPositions = customPositions;
+      const maxDist = 100.0;
+      _cachedEdges = [
+        for (int i = 0; i < positions.length; i++)
+          for (int j = i + 1; j < positions.length; j++)
+            if ((positions[i] - positions[j]).distance < maxDist)
+              (positions[i], positions[j]),
+      ];
+    }
+    final edges = _cachedEdges!;
+    if (edges.isEmpty) return;
+
     const dashLen = 4.0;
     const gapLen = 4.0;
     const period = dashLen + gapLen;
@@ -3607,23 +3587,19 @@ class _PitchPainter extends CustomPainter {
       ..strokeWidth = 0.9
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
-    for (int i = 0; i < positions.length; i++) {
-      for (int j = i + 1; j < positions.length; j++) {
-        final a = positions[i];
-        final b = positions[j];
-        final d = (a - b).distance;
-        if (d >= 80) continue;
-        final dir = (b - a) / d;
-        final offset = ((t + phase) * period * 2) % period;
-        double dist = -offset;
-        while (dist < d) {
-          final start = dist.clamp(0.0, d);
-          final end = (dist + dashLen).clamp(0.0, d);
-          if (end > start) {
-            canvas.drawLine(a + dir * start, a + dir * end, paint);
-          }
-          dist += period;
+
+    for (final (a, b) in edges) {
+      final d = (a - b).distance;
+      final dir = (b - a) / d;
+      final offset = ((t + phase) * period * 2) % period;
+      double dist = -offset;
+      while (dist < d) {
+        final start = dist.clamp(0.0, d);
+        final end = (dist + dashLen).clamp(0.0, d);
+        if (end > start) {
+          canvas.drawLine(a + dir * start, a + dir * end, paint);
         }
+        dist += period;
       }
     }
   }
@@ -3670,9 +3646,7 @@ class _PitchPainter extends CustomPainter {
     canvas.drawCircle(
       pos,
       outerR,
-      Paint()
-        ..color = c.withValues(alpha: outerA)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      Paint()..color = c.withValues(alpha: outerA * 0.7),
     );
     canvas.drawCircle(pos, midR, Paint()..color = c.withValues(alpha: midA));
     canvas.drawCircle(pos, r, Paint()..color = c.withValues(alpha: 0.95));
@@ -3729,7 +3703,6 @@ class _PitchPainter extends CustomPainter {
     final np = _jerseyPainter(num);
 
     if (rotateNumber) {
-      // Rotate 90° CW to counteract the board's 90° CCW RotatedBox
       canvas.save();
       canvas.translate(pos.dx, pos.dy);
       canvas.rotate(math.pi / 2);
@@ -3764,7 +3737,6 @@ class StatsPanel extends StatefulWidget {
 class _StatsPanelState extends State<StatsPanel>
     with SingleTickerProviderStateMixin {
   late final AnimationController _enter;
-  // Pre-built stagger animations (7 items: indices 0-6)
   late final List<Animation<double>> _opacities;
   late final List<Animation<double>> _slides;
 
@@ -3797,16 +3769,12 @@ class _StatsPanelState extends State<StatsPanel>
     super.dispose();
   }
 
-  Widget _staggered(Widget child, int index) => AnimatedBuilder(
-    animation: _enter,
-    builder: (_, child) => Opacity(
-      opacity: _opacities[index].value,
-      child: Transform.translate(
-        offset: Offset(0, _slides[index].value),
-        child: child,
-      ),
+  Widget _staggered(Widget child, int index) => FadeTransition(
+    opacity: _opacities[index],
+    child: Transform.translate(
+      offset: Offset(0, _slides[index].value),
+      child: child,
     ),
-    child: child,
   );
 
   @override
@@ -3814,7 +3782,7 @@ class _StatsPanelState extends State<StatsPanel>
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      _staggered(_LiveChip(), 0),
+      _staggered(RepaintBoundary(child: const _LiveChip()), 0),
       const SizedBox(height: 18),
       _staggered(
         const Text(
@@ -3841,27 +3809,123 @@ class _StatsPanelState extends State<StatsPanel>
         2,
       ),
       const SizedBox(height: 26),
-      _staggered(
-        _GlassStatCard(
-          stats: [
-            _Stat(widget.formation, 'Formation'),
-            const _Stat('11', 'Players'),
-            const _Stat('62%', 'Possession'),
-          ],
-        ),
-        3,
-      ),
+      _staggered(const _LegacyStatsCardStub(), 3),
+
       const SizedBox(height: 18),
       _staggered(const _MatchBarRow(), 4),
       const SizedBox(height: 18),
-      _staggered(const _TeamLegendRow(), 5),
+      _staggered(_TeamLegendRow(), 5),
       const SizedBox(height: 22),
-      _staggered(_TacticalNotesCard(), 6),
+      _staggered(const _TacticalNotesCard(), 6),
+    ],
+  );
+}
+
+class _LegacyStatsCardStub extends StatelessWidget {
+  const _LegacyStatsCardStub();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      border: Border.all(color: AppColors.grid.withValues(alpha: 0.55)),
+      borderRadius: BorderRadius.circular(12),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          AppColors.frame.withValues(alpha: 0.40),
+          AppColors.grid.withValues(alpha: 0.12),
+        ],
+      ),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'LEGACY STATS',
+          style: TextStyle(
+            fontSize: 9,
+            color: AppColors.hologram,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Formation intelligence cards are currently simplified for performance. '
+          'Heatmap + layer lines are powered by custom painters on the board.',
+          style: TextStyle(fontSize: 12, height: 1.65, color: Colors.white),
+        ),
+      ],
+    ),
+  );
+}
+
+class _TeamLegendRow extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      border: Border.all(color: AppColors.grid.withValues(alpha: 0.55)),
+      borderRadius: BorderRadius.circular(12),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          AppColors.frame.withValues(alpha: 0.40),
+          AppColors.grid.withValues(alpha: 0.12),
+        ],
+      ),
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        _LegendItem(color: AppColors.gold, label: 'DEF'),
+        _LegendItem(color: AppColors.hologram, label: 'MID'),
+        _LegendItem(color: AppColors.teamA, label: 'ATTK'),
+      ],
+    ),
+  );
+}
+
+class _LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _LegendItem({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color.withValues(alpha: 0.20),
+          border: Border.all(color: color.withValues(alpha: 0.55)),
+          boxShadow: [
+            BoxShadow(color: color.withValues(alpha: 0.12), blurRadius: 8),
+          ],
+        ),
+      ),
+      const SizedBox(width: 8),
+      Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          color: color,
+          letterSpacing: 1.2,
+          fontFamily: 'monospace',
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     ],
   );
 }
 
 class _TacticalNotesCard extends StatelessWidget {
+  const _TacticalNotesCard();
+
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(16),
@@ -4069,6 +4133,7 @@ class _DualBar extends StatelessWidget {
 
 // ─── Live Chip ──────────────────────────────────────────────────────────────
 class _LiveChip extends StatefulWidget {
+  const _LiveChip();
   @override
   State<_LiveChip> createState() => _LiveChipState();
 }
@@ -4093,187 +4158,56 @@ class _LiveChipState extends State<_LiveChip>
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _ctrl,
-    builder: (_, __) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: AppColors.neonGlow.withValues(
-            alpha: 0.22 + _ctrl.value * 0.38,
-          ),
-          width: 1.0 + _ctrl.value * 0.45,
-        ),
-        borderRadius: BorderRadius.circular(5),
-        color: AppColors.neonGlow.withValues(alpha: 0.03 + _ctrl.value * 0.045),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.neonGlow.withValues(alpha: _ctrl.value * 0.12),
-            blurRadius: 10,
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 5.5,
-            height: 5.5,
-            margin: const EdgeInsets.only(right: 7),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.teamB.withValues(alpha: 0.5 + _ctrl.value * 0.5),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.teamB.withValues(alpha: _ctrl.value * 0.7),
-                  blurRadius: 7,
-                ),
-              ],
-            ),
-          ),
-          const Text(
-            'LIVE · MATCH ANALYSIS',
-            style: TextStyle(
-              fontSize: 9,
-              color: AppColors.neonGlow,
-              letterSpacing: 2.8,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-// ─── Glass Stat Card ─────────────────────────────────────────────────────────
-class _Stat {
-  final String value, label;
-  const _Stat(this.value, this.label);
-}
-
-class _GlassStatCard extends StatelessWidget {
-  final List<_Stat> stats;
-  const _GlassStatCard({required this.stats});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: AppColors.neonGlow.withValues(alpha: 0.13)),
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          AppColors.frame.withValues(alpha: 0.72),
-          AppColors.grid.withValues(alpha: 0.28),
-        ],
-      ),
-    ),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: stats
-          .map(
-            (s) => Column(
-              children: [
-                Text(
-                  s.value,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.neonGlow,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  s.label.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: AppColors.secondaryGlow.withValues(alpha: 0.68),
-                    letterSpacing: 1.5,
-                  ),
-                ),
-              ],
-            ),
-          )
-          .toList(),
-    ),
-  );
-}
-
-// ─── Team Legend ─────────────────────────────────────────────────────────────
-class _TeamLegendRow extends StatelessWidget {
-  const _TeamLegendRow();
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      _LegendDot(color: AppColors.teamA, label: 'Team A  4-2-3-1'),
-      const SizedBox(width: 28),
-      _LegendDot(
-        color: AppColors.neonGlow.withValues(alpha: 0.5),
-        label: 'Formation  4-2-3-1',
-      ),
-    ],
-  );
-}
-
-class _LegendDot extends StatelessWidget {
-  final Color color;
-  final String label;
-  const _LegendDot({required this.color, required this.label});
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Container(
-        width: 10,
-        height: 10,
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
         decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
+          border: Border.all(
+            color: AppColors.neonGlow.withValues(
+              alpha: 0.22 + _ctrl.value * 0.38,
+            ),
+            width: 1.0 + _ctrl.value * 0.45,
+          ),
+          borderRadius: BorderRadius.circular(5),
+          color: AppColors.neonGlow.withValues(
+            alpha: 0.03 + _ctrl.value * 0.045,
+          ),
           boxShadow: [
-            BoxShadow(color: color.withValues(alpha: 0.58), blurRadius: 8),
+            BoxShadow(
+              color: AppColors.neonGlow.withValues(alpha: _ctrl.value * 0.12),
+              blurRadius: 10,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 5.5,
+              height: 5.5,
+              margin: const EdgeInsets.only(right: 7),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.teamB.withValues(
+                  alpha: 0.5 + _ctrl.value * 0.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.teamB.withValues(alpha: _ctrl.value * 0.7),
+                    blurRadius: 7,
+                  ),
+                ],
+              ),
+            ),
+            const Text(
+              'LIVE · MATCH ANALYSIS',
+              style: TextStyle(fontSize: 9, color: AppColors.neonGlow),
+            ),
           ],
         ),
       ),
-      const SizedBox(width: 8),
-      Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          color: Colors.white.withValues(alpha: 0.58),
-          letterSpacing: 0.5,
-        ),
-      ),
-    ],
-  );
-}
-
-// ─── Readout Chip ────────────────────────────────────────────────────────────
-class _ReadoutChip extends StatelessWidget {
-  final String label, value;
-  const _ReadoutChip({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      Text(
-        value,
-        style: const TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w800,
-          color: AppColors.neonGlow,
-        ),
-      ),
-      Text(
-        label,
-        style: TextStyle(
-          fontSize: 9,
-          color: AppColors.secondaryGlow.withValues(alpha: 0.58),
-          letterSpacing: 1.5,
-        ),
-      ),
-    ],
+    ),
   );
 }
