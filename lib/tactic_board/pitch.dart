@@ -42,12 +42,13 @@ class _PitchWidgetState extends State<PitchWidget> {
   Offset? _downPos;
 
   List<Offset> _getPositions() => List.generate(
-    11,
-    (i) => widget.customPositions[i] ?? defaultPositions[i](308.0, 224.0),
-  );
+        11,
+        (i) => widget.customPositions[i] ?? defaultPositions[i](308.0, 224.0),
+      );
 
   int? _hitTest(Offset localPosition) {
-    const threshold = 34.0;
+    const threshold = 45.0;
+
     final positions = _getPositions();
     double bestDist = threshold;
     int? hit;
@@ -101,52 +102,56 @@ class _PitchWidgetState extends State<PitchWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.dragModeEnabled) {
-      return Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: _handlePointerDown,
-        onPointerMove: _handlePointerMove,
-        onPointerUp: _handlePointerUp,
-        onPointerCancel: _handlePointerCancel,
-        child: AnimatedBuilder(
-          animation: Listenable.merge([widget.pulseAnim, widget.passAnim]),
-          builder: (_, __) => CustomPaint(
-            size: const Size(308, 224),
-            painter: PitchPainter(
-              pulse: widget.pulseAnim.value,
-              passT: widget.passAnim.value,
-              selectedPlayer: widget.selectedPlayer,
-              customPositions: widget.customPositions,
-              dragModeEnabled: widget.dragModeEnabled,
-              draggingPlayer: _draggingPlayer,
-              showHeatmap: widget.showHeatmap,
-              rotateNumbers: widget.rotateNumbers,
+    final child = widget.dragModeEnabled
+        ? Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: _handlePointerDown,
+            onPointerMove: _handlePointerMove,
+            onPointerUp: _handlePointerUp,
+            onPointerCancel: _handlePointerCancel,
+            child: AnimatedBuilder(
+              animation: Listenable.merge([widget.pulseAnim, widget.passAnim]),
+              builder: (_, __) => CustomPaint(
+                size: const Size(308, 224),
+                painter: PitchPainter(
+                  pulse: widget.pulseAnim.value,
+                  passT: widget.passAnim.value,
+                  selectedPlayer: widget.selectedPlayer,
+                  customPositions: widget.customPositions,
+                  dragModeEnabled: widget.dragModeEnabled,
+                  draggingPlayer: _draggingPlayer,
+                  showHeatmap: widget.showHeatmap,
+                  rotateNumbers: widget.rotateNumbers,
+                ),
+              ),
             ),
-          ),
-        ),
-      );
-    }
-    return GestureDetector(
-      onTapDown: (d) {
-        final hit = _hitTest(d.localPosition);
-        widget.onPlayerTapped(hit);
-      },
-      child: AnimatedBuilder(
-        animation: Listenable.merge([widget.pulseAnim, widget.passAnim]),
-        builder: (_, __) => CustomPaint(
-          size: const Size(308, 224),
-          painter: PitchPainter(
-            pulse: widget.pulseAnim.value,
-            passT: widget.passAnim.value,
-            selectedPlayer: widget.selectedPlayer,
-            customPositions: widget.customPositions,
-            dragModeEnabled: widget.dragModeEnabled,
-            draggingPlayer: _draggingPlayer,
-            showHeatmap: widget.showHeatmap,
-            rotateNumbers: widget.rotateNumbers,
-          ),
-        ),
-      ),
+          )
+        : GestureDetector(
+            onTapDown: (d) {
+              final hit = _hitTest(d.localPosition);
+              widget.onPlayerTapped(hit);
+            },
+            child: AnimatedBuilder(
+              animation: Listenable.merge([widget.pulseAnim, widget.passAnim]),
+              builder: (_, __) => CustomPaint(
+                size: const Size(308, 224),
+                painter: PitchPainter(
+                  pulse: widget.pulseAnim.value,
+                  passT: widget.passAnim.value,
+                  selectedPlayer: widget.selectedPlayer,
+                  customPositions: widget.customPositions,
+                  dragModeEnabled: widget.dragModeEnabled,
+                  draggingPlayer: _draggingPlayer,
+                  showHeatmap: widget.showHeatmap,
+                  rotateNumbers: widget.rotateNumbers,
+                ),
+              ),
+            ),
+          );
+
+    return AbsorbPointer(
+      absorbing: false,
+      child: child,
     );
   }
 }
@@ -154,16 +159,16 @@ class _PitchWidgetState extends State<PitchWidget> {
 // ─── Pitch Painter ──────────────────────────────────────────────────────────
 final _cachedJerseyPainters = <int, TextPainter>{};
 TextPainter _jerseyPainter(int num) => _cachedJerseyPainters.putIfAbsent(
-  num,
-  () => layoutText(
-    '$num',
-    const TextStyle(
-      color: AppColors.background,
-      fontSize: 8.5,
-      fontWeight: FontWeight.w900,
-    ),
-  ),
-);
+      num,
+      () => layoutText(
+        '$num',
+        const TextStyle(
+          color: AppColors.background,
+          fontSize: 8.5,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
 
 final _cachedBandLabelPainters = <String, TextPainter>{};
 TextPainter _bandLabelPainter(String text, Color color) =>
@@ -571,9 +576,8 @@ class PitchPainter extends CustomPainter {
       5.5,
       Paint()
         ..color = AppColors.gold.withValues(alpha: Perf.useBlur ? 0.18 : 0.28)
-        ..maskFilter = Perf.useBlur
-            ? const MaskFilter.blur(BlurStyle.normal, 5)
-            : null,
+        ..maskFilter =
+            Perf.useBlur ? const MaskFilter.blur(BlurStyle.normal, 5) : null,
     );
     canvas.drawCircle(
       ballPos,
@@ -646,30 +650,28 @@ class PitchPainter extends CustomPainter {
     bool rotateNumber = false,
   }) {
     final c = dragMode && !isGK ? AppColors.accent3 : color;
-    final outerR =
-        r +
+    final outerR = r +
         (selected
             ? 10
             : isDragging
-            ? 12
-            : 6);
-    final midR =
-        r +
+                ? 12
+                : 6);
+    final midR = r +
         (selected
             ? 4
             : isDragging
-            ? 5
-            : 2.5);
+                ? 5
+                : 2.5);
     final outerA = selected
         ? 0.14
         : isDragging
-        ? 0.22
-        : 0.045 + p * 0.05;
+            ? 0.22
+            : 0.045 + p * 0.05;
     final midA = selected
         ? 0.28
         : isDragging
-        ? 0.35
-        : 0.13 + p * 0.09;
+            ? 0.35
+            : 0.13 + p * 0.09;
 
     canvas.drawCircle(
       pos,
@@ -752,4 +754,3 @@ class PitchPainter extends CustomPainter {
       old.showHeatmap != showHeatmap ||
       old.rotateNumbers != rotateNumbers;
 }
-

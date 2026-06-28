@@ -131,7 +131,8 @@ class _HeroSectionState extends State<HeroSection> {
                           onPressed: widget.onViewProjects,
                         ),
                         if (isWide)
-                          SkillsRadarMini(attributes: ProfileData.hudAttributes),
+                          SkillsRadarMini(
+                              attributes: ProfileData.hudAttributes),
                       ],
                     ),
                   ],
@@ -368,9 +369,11 @@ class BoardTransform extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (isLandscape) {
+    final isMobile = MediaQuery.of(context).size.shortestSide < 600;
+    if (isLandscape || isMobile) {
       return Opacity(opacity: 1.0, child: child);
     }
+
     final opacity = (1.0 - boardT * 0.7).clamp(0.0, 1.0);
     if (Perf.lightEffects) {
       return Transform.translate(

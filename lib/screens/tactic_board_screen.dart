@@ -54,7 +54,10 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
     );
     _entryCurved = CurvedAnimation(parent: _entryCtrl, curve: morphCurve);
     Future.delayed(const Duration(milliseconds: 120), () {
-      if (mounted) _entryCtrl.forward();
+      if (!mounted) return;
+      if (MediaQuery.of(context).size.shortestSide >= 600) {
+        _entryCtrl.forward();
+      }
     });
 
     _scroll.addListener(_onScroll);
@@ -191,6 +194,11 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
                 animation: _entryCtrl,
                 builder: (_, child) {
                   final t = _entryCurved.value;
+                  final isMobile =
+                      MediaQuery.of(context).size.shortestSide < 600;
+                  if (isMobile) {
+                    return child!;
+                  }
                   return FadeTransition(
                     opacity: AlwaysStoppedAnimation(t.clamp(0.0, 1.0)),
                     child: Transform.translate(
