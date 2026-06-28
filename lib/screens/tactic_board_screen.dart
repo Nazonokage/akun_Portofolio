@@ -4,11 +4,13 @@ import '../core/perf.dart';
 import '../core/app_theme.dart';
 import '../core/text_layout.dart';
 import '../sections/about_section.dart';
-import '../sections/contact_section.dart';
+import '../sections/contact_section.dart' as contact;
 import '../sections/experience_section.dart';
 import '../sections/hero_section.dart';
+
 import '../sections/projects_section.dart';
 import '../sections/skills_section.dart';
+
 import '../tactic_board/background.dart';
 import '../widgets/balanced_content.dart';
 import '../widgets/jump_to_contact.dart';
@@ -68,9 +70,7 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
       _heroMorph.value = hero;
     }
 
-    final published = Perf.lightEffects
-        ? (offset / 4).round() * 4.0
-        : offset;
+    final published = Perf.lightEffects ? (offset / 4).round() * 4.0 : offset;
     if (published != _lastPublishedScroll) {
       _lastPublishedScroll = published;
       _rawOffset.value = published;
@@ -79,8 +79,7 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final paused =
-        state == AppLifecycleState.paused ||
+    final paused = state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive;
     if (animationsPaused.value != paused) {
       animationsPaused.value = paused;
@@ -212,13 +211,13 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
                       AboutSection(rawOffsetNotifier: _rawOffset),
                       SkillsSection(rawOffsetNotifier: _rawOffset),
                       ExperienceSection(rawOffsetNotifier: _rawOffset),
-                      KeyedSubtree(
+                      ProjectsSection(
                         key: _projectsKey,
-                        child: ProjectsSection(rawOffsetNotifier: _rawOffset),
-                      ),
-                      ContactSection(
                         rawOffsetNotifier: _rawOffset,
-                        sectionKey: _contactKey,
+                      ),
+                      contact.ContactSection(
+                        key: _contactKey,
+                        rawOffsetNotifier: _rawOffset,
                       ),
                       SizedBox(
                         height: MediaQuery.sizeOf(context).height * 0.15,

@@ -80,13 +80,13 @@ class ContactLink {
   final String label;
   final String value;
   final String uri;
-  final ContactLinkType type;
+  final ContactLinkType? type;
 
   const ContactLink({
     required this.label,
     required this.value,
     required this.uri,
-    required this.type,
+    this.type,
   });
 }
 
@@ -318,16 +318,18 @@ class ProfileData {
     ),
     ProjectEntry(
       name: 'Lane Ledger',
-      subtitle: 'Wild Rift Draft Companion · Offline Tool',
-      stack: 'HTML · CSS · JavaScript · JSON',
+      subtitle: 'Wild Rift Draft Companion · Lane Matchup Assistant',
+      stack: 'React 19 · Vite · TypeScript · JSON',
       year: '2025',
       featured: true,
       category: ProjectCategory.web,
       accent: AppColors.success,
       bullets: [
-        'Offline draft helper for all 5 lanes with matchup scoring and champion almanac.',
-        'Build pipeline compiles lane JSON into a single bundle for mobile-friendly use.',
+        'Lightning-fast Wild Rift draft companion for smart ADC/APC (Dragon lane) and full-team pick decisions during champion select.',
+        'Almanac for deep champion matchups + Draft Helper with client-side scoring engine (synergies, counters, draft rules, flex picks & warnings).',
+        'All data pre-bundled from lane-specific JSON sources — blazing fast and mobile-friendly.',
       ],
+      // liveUrl: 'https://lane-matchup-assistant.vercel.app/',
     ),
     ProjectEntry(
       name: 'AE Group Business Site',
@@ -484,6 +486,12 @@ class ProfileData {
       value: 'Nazonokage',
       uri: 'https://github.com/Nazonokage',
       type: ContactLinkType.web,
+    ),
+    ContactLink(
+      label: 'RESUME',
+      value: 'Download PDF',
+      uri: 'assets/Joshua_resume.pdf',
+      type: null,
     ),
   ];
 }
