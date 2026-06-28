@@ -58,6 +58,70 @@ lib/
 
 ---
 
+### Repo folder chart (current)
+
+```bash
+portfolio/
+├─ assets/
+│  └─ Joshua_resume.pdf
+├─ info/
+│  ├─ basis.dart
+│  ├─ design.json
+│  ├─ plan.md
+│  ├─ self_info.txt
+│  ├─ TODO.md
+│  ├─ *.webp
+│  └─ Additional projects/
+├─ lib/
+│  ├─ core/
+│  │  ├─ app_theme.dart
+│  │  ├─ perf.dart
+│  │  └─ text_layout.dart
+│  ├─ data/
+│  │  └─ profile_data.dart
+│  ├─ screens/
+│  │  └─ tactic_board_screen.dart
+│  ├─ sections/
+│  │  ├─ about_section.dart
+│  │  ├─ contact_section.dart
+│  │  ├─ experience_section.dart
+│  │  ├─ hero_section.dart
+│  │  ├─ projects_section.dart
+│  │  └─ section_shell.dart
+│  ├─ tactic_board/
+│  │  ├─ background.dart
+│  │  ├─ floating_board.dart
+│  │  ├─ formation.dart
+│  │  ├─ pitch.dart
+│  │  ├─ score_ticker.dart
+│  │  ├─ scroll_progress.dart
+│  │  └─ stats_panel.dart
+│  └─ widgets/
+│     ├─ balanced_content.dart
+│     ├─ bottom_stat_strip.dart
+│     ├─ glass_panel.dart
+│     ├─ hud_decorations.dart
+│     ├─ info_card.dart
+│     ├─ jump_to_contact.dart
+│     ├─ morph_reveal.dart
+│     ├─ radar_chart.dart
+│     └─ readouts.dart
+├─ test/
+│  └─ widget_test.dart
+├─ web/
+│  ├─ index.html
+│  ├─ manifest.json
+│  └─ favicon.png + icons/
+├─ android/
+├─ ios/
+├─ windows/
+├─ linux/
+└─ macos/
+```
+
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
