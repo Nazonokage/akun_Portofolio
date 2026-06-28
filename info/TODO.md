@@ -1,82 +1,70 @@
-# Portfolio Improvement TODO (Updated with Past Projects)
+# Portfolio Todo List
 
-## Phase 0: Asset Integration (Today)
+## Original Feedback (Joshua Porras)
 
-- [ ] **Incorporate Tactical HUD Design System**
-  - Migrate colors, effects, typography, panels from `design.json` into `core/app_theme.dart`
-  - Update glass panels, glows, scanlines, particles to match new spec
-  - Adopt "Football Tactical HUD" naming & terminology where fitting
-  - Add angled panels, corner cuts, micro-grids, floating coordinates
+- **Featured Projects Section**:
+  - Add a pattern animation or design for the featured projects.
+- **Cards Hover Animation**:
+  - Implement hover animation for all cards (if possible).
+- **Contact Section**:
+  - Balance the "open channel" / contact area.
+- **General**:
+  - Run `flutter analyze` after fixes.
 
-- [ ] **Showcase Past Projects**
-  - Create dedicated "Featured Projects" cards in Projects section
-  - Highlight: Car4Rent (PHP MVC), AE Group Business Site (React), Power Remote (Flutter+ESP32), Lane Ledger (Wild Rift tool), Movie Ticketing (Java), Network Scanner tools, Video Player, PSG Fan Site, Typer.ps1
+## Code & Design Review Suggestions
 
+### Featured Projects / Cards
 
+- Add subtle background pattern (grid dots, scan lines, or circuit traces) using `CustomPainter` or animated `DecoratedBox` + `ShaderMask`. Tie to `rawOffsetNotifier`.
+- Implement hover effects `MouseRegion` + scale + neon glow) on project cards and other cards using `AnimatedContainer` / `Transform.scale` + `BoxShadow`.
+- Polish project cards:
+  - Add consistent thumbnail/hero image support.
+  - Improve mobile spacing and stacking.
+  - Add subtle tap/pressed feedback.
 
-## Phase 1: Quick Wins (1-2 days) - High Impact
+### Contact Section
 
-- [ ] **Hero Section Clarity** (Tactical HUD style)
-  - Stronger role: "Flutter Developer | Tactical Interface Engineer"
-  - Add "View Tactical Projects" CTA
-  - Integrate HUD header elements (rating, position, etc.)
+- Improve balance and alignment of "OPEN CHANNEL" panel and contact chips.
+- Ensure consistent padding/spacing across breakpoints (use `AppLayout`).
+- Better vertical alignment / equal height on wide screens.
+- Consider adding icons for contact links (LinkedIn, Email, etc.).
 
-- [ ] **Typography & Readability**
-  - Adopt Orbitron/Rajdhani from design system for headings
-  - Improve contrast per new color palette
+### General Improvements
 
-- [ ] **Mobile Responsiveness**
-  - Ensure new HUD panels scale cleanly
+- **Accessibility**: Add `Semantics` labels, improve contrast, support keyboard navigation.
+- **SEO / Web**: Enhance `web/index.html` with better meta tags, Open Graph, and JSON-LD.
+- **Content**: Ensure all projects have live/demo links; add "last updated" note.
+- **Mobile Experience**: Test touch targets and scroll feel on real devices.
 
+## Performance Optimizations
 
+**Goal**: Maintain cinematic feel while targeting smooth 60fps on mid-range devices and web.
 
-## Phase 2: Content & Polish (3-5 days)
+### High Priority
 
-- [ ] **Projects Section Overhaul**
-  - Use HUD-style StatCards for each project
-  - Include tech stack, live links, GitHub, short case studies
-  - Prioritize: Power Remote, Car4Rent, Lane Ledger, AE Business Site, Network Tools
-  - Add screenshots/gifs with tactical overlays
+- **Background Painting**: Profile and optimize `CombinedBgPainter` (aurora, grid, vignette, morph). Improve `shouldRepaint` and add caching.
+- **Animation Throttling**: Limit `_auroraCtrl` and particle system on mobile. Leverage existing `animationsPaused` and `TickerMode`.
+- **Scroll Performance**: Refine `_onScroll` listener; consider `NotificationListener<ScrollNotification>` for some effects.
+- **Rendering**: Use `const` constructors aggressively in cards and sections. Prepare for lazy-loading images.
 
-- [ ] **Skills Section**
-  - Turn into Radar Chart or attribute-style HUD (Pace, Passing, etc. metaphor)
-  - Categories: Flutter, Backend (PHP/Java), DevOps/Tools, UI/UX
+### Medium Priority
 
-- [ ] **Experience & About**
-  - Timeline with match-event style nodes
-  - Integrate profile data from design system
+- Minimize notifier rebuilds and use `ValueNotifier` selectively (already strong here).
+- Web build optimizations `--web-renderer canvaskit` + analyze bundle size).
+- Add basic device capability detection to reduce animation quality on low-end devices.
+- Use `VisibilityDetector` more for off-screen sections.
 
-- [ ] **New Tactical Touches**
-  - Add mini radar chart in hero/stats
-  - Formation-based navigation or skill showcase
-  - Heatmap-style project distribution
+### Monitoring & Testing
 
+- Use **Flutter DevTools** Performance tab during scroll.
+- Test on: Low-end Android, iOS Safari, Chrome (desktop + mobile).
+- Commands:
+  ```bash
 
+  flutter analyze
 
-## Phase 3: Performance & Advanced
+  flutter format .
 
-- [ ] **Performance Optimizations**
-  - Lazy loading + better CustomPaint handling
+  flutter build web --release --web-renderer canvaskit
+  ```
 
-- [ ] **Accessibility & Polish**
-  - Keyboard nav, ARIA for interactive board
-
-- [ ] **Advanced Features**
-  - Interactive formation editor that links to projects
-  - Export/share your "tactical profile"
-  - Dark-only with subtle scanline/noise from design spec
-
-
-
-## Bonus Ideas from Your Projects
-
-- **Typer.ps1 style** — Add a fun "Command Console" easter egg
-- **Video Player** — Dark theme consistency
-- **Network Tools** — Maybe a mini "Portfolio Scanner" joke
-- **Business Site** — Clean multi-section navigation inspiration
-
-**Priority:** Start with **design.json integration** → it will instantly elevate the whole aesthetic.
-
----
-
-**you can base off some info from info\design.json and info\Additional projects**
