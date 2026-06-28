@@ -45,20 +45,8 @@ Built for **web + mobile** with buttery-smooth performance using `CustomPaint`.
 
 ---
 
-## 📁 Project Structure
-
-```bash
-lib/
-├── main.dart                 # Main app & hero logic (monolithic for rapid iteration)
-├── widgets/                  # Reusable UI components (Coming Soon)
-├── painters/                 # Custom painters (Board, Aurora, Heatmap)
-├── models/                   # Data structures (Player, Formation)
-└── utils/                    # Formation detection & physics helpers
-```
-
----
-
 ### Repo folder chart (current)
+
 
 ```bash
 portfolio/
@@ -71,24 +59,24 @@ portfolio/
 │  ├─ self_info.txt
 │  ├─ TODO.md
 │  ├─ *.webp
-│  └─ Additional projects/
+│  └─ Additional projects/ (markdowns & notes)
 ├─ lib/
-│  ├─ core/
+│  ├─ core/            # theming + perf helpers
 │  │  ├─ app_theme.dart
 │  │  ├─ perf.dart
 │  │  └─ text_layout.dart
-│  ├─ data/
+│  ├─ data/            # app data models (profile etc.)
 │  │  └─ profile_data.dart
-│  ├─ screens/
+│  ├─ screens/         # top-level screens
 │  │  └─ tactic_board_screen.dart
-│  ├─ sections/
+│  ├─ sections/        # page sections around the board
 │  │  ├─ about_section.dart
 │  │  ├─ contact_section.dart
 │  │  ├─ experience_section.dart
 │  │  ├─ hero_section.dart
 │  │  ├─ projects_section.dart
 │  │  └─ section_shell.dart
-│  ├─ tactic_board/
+│  ├─ tactic_board/    # custom tactical board widgets/painters
 │  │  ├─ background.dart
 │  │  ├─ floating_board.dart
 │  │  ├─ formation.dart
@@ -96,7 +84,7 @@ portfolio/
 │  │  ├─ score_ticker.dart
 │  │  ├─ scroll_progress.dart
 │  │  └─ stats_panel.dart
-│  └─ widgets/
+│  └─ widgets/         # reusable UI building blocks
 │     ├─ balanced_content.dart
 │     ├─ bottom_stat_strip.dart
 │     ├─ glass_panel.dart
@@ -112,15 +100,15 @@ portfolio/
 │  ├─ index.html
 │  ├─ manifest.json
 │  └─ favicon.png + icons/
-├─ android/
-├─ ios/
-├─ windows/
-├─ linux/
-└─ macos/
+├─ android/            # native configs (generated)
+├─ ios/                # native configs (generated)
+├─ windows/            # native configs (generated)
+├─ linux/              # native configs (generated)
+└─ macos/               # native configs (generated)
 ```
 
-
 ---
+
 
 ## 🚀 Getting Started
 
