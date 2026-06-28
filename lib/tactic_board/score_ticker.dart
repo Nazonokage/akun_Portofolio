@@ -5,7 +5,7 @@ import 'floating_board.dart';
 
 // ─── Score Ticker ──────────────────────────────────────────────────────────
 class ScoreTicker extends StatelessWidget {
-  const ScoreTicker();
+  const ScoreTicker({super.key});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -50,7 +50,7 @@ class ScoreTicker extends StatelessWidget {
 
 class LiveBadge extends StatelessWidget {
   final double pulse;
-  const LiveBadge({required this.pulse});
+  const LiveBadge({super.key, required this.pulse});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -97,7 +97,7 @@ class LiveBadge extends StatelessWidget {
 class TeamScore extends StatelessWidget {
   final String code, score;
   final Color color;
-  const TeamScore({
+  const TeamScore({super.key, 
     required this.code,
     required this.score,
     required this.color,
@@ -145,7 +145,7 @@ class BoardControls extends StatelessWidget {
   final VoidCallback? onRedo;
   final bool compact;
 
-  const BoardControls({
+  const BoardControls({super.key, 
     required this.pulsingLabel,
     required this.formationLabel,
     required this.formationValue,

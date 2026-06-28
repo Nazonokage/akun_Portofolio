@@ -1,14 +1,10 @@
-import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/physics.dart';
-import 'package:visibility_detector/visibility_detector.dart';
 
 import '../core/app_theme.dart';
 import '../core/perf.dart';
-import '../core/text_layout.dart';
 import 'background.dart';
 import 'formation.dart';
 import 'pitch.dart';
@@ -290,7 +286,7 @@ class FullscreenOverlay extends StatelessWidget {
   final VoidCallback? onUndo;
   final VoidCallback? onRedo;
 
-  const FullscreenOverlay({
+  const FullscreenOverlay({super.key, 
     required this.child,
     required this.onClose,
     required this.isMobile,
@@ -412,7 +408,7 @@ class OverlayIconBtn extends StatelessWidget {
   final String tooltip;
   final bool active;
 
-  const OverlayIconBtn({
+  const OverlayIconBtn({super.key, 
     required this.icon,
     required this.color,
     required this.onTap,
@@ -468,6 +464,8 @@ class OverlayGridPainter extends CustomPainter {
 }
 
 class OverlayCornerBrackets extends StatelessWidget {
+  const OverlayCornerBrackets({super.key});
+
   @override
   Widget build(BuildContext context) => Stack(
     children: [
@@ -501,7 +499,7 @@ class OverlayCornerBrackets extends StatelessWidget {
 
 class ExitFullscreenBtn extends StatefulWidget {
   final VoidCallback onTap;
-  const ExitFullscreenBtn({required this.onTap});
+  const ExitFullscreenBtn({super.key, required this.onTap});
 
   @override
   State<ExitFullscreenBtn> createState() => _ExitFullscreenBtnState();
@@ -578,7 +576,7 @@ class _ExitFullscreenBtnState extends State<ExitFullscreenBtn>
 // ─── Pulsing Label ──────────────────────────────────────────────────────────
 class PulsingLabel extends StatefulWidget {
   final String label;
-  const PulsingLabel({required this.label});
+  const PulsingLabel({super.key, required this.label});
 
   @override
   State<PulsingLabel> createState() => _PulsingLabelState();
@@ -642,7 +640,7 @@ class TiltCard extends StatelessWidget {
   final bool rotateNumbers;
   final Size screenSize;
 
-  const TiltCard({
+  const TiltCard({super.key, 
     required this.pulseAnim,
     required this.passAnim,
     required this.selectedPlayer,

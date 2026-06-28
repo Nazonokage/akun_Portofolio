@@ -4,7 +4,7 @@ import '../core/app_theme.dart';
 
 // ─── Bottom Stat Strip ────────────────────────────────────────────────────
 class BottomStatStrip extends StatelessWidget {
-  const BottomStatStrip();
+  const BottomStatStrip({super.key});
 
   static const _items = [
     ('3D TILT', 'Matrix4 perspective'),
@@ -31,7 +31,7 @@ class BottomStatStrip extends StatelessWidget {
 
 class AnimatedStatItem extends StatefulWidget {
   final String value, label;
-  const AnimatedStatItem({required this.value, required this.label});
+  const AnimatedStatItem({super.key, required this.value, required this.label});
 
   @override
   State<AnimatedStatItem> createState() => _AnimatedStatItemState();

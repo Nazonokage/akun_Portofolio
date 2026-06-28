@@ -185,6 +185,8 @@ class _ContactChipState extends State<ContactChip>
                     const SizedBox(height: 4),
                     Text(
                       widget.value,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w900,

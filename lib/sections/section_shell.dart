@@ -20,17 +20,21 @@ class PortfolioSectionShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final padding = AppBalance.sectionPadding(width);
+    final labelGap = width < AppBalance.compactBreakpoint ? 24.0 : 32.0;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
-            color: AppColors.neonGlow.withValues(alpha: 0.12),
+            color: AppColors.primary.withValues(alpha: 0.12),
           ),
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 44),
+        padding: padding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -39,7 +43,7 @@ class PortfolioSectionShell extends StatelessWidget {
               triggerAt: triggerAt,
               child: SectionLabel(text: label),
             ),
-            const SizedBox(height: 32),
+            SizedBox(height: labelGap),
             ...children,
           ],
         ),

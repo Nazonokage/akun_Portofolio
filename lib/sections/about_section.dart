@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/app_theme.dart';
 import '../data/profile_data.dart';
-import '../widgets/glass_panel.dart';
+import '../widgets/hud_decorations.dart';
 import '../widgets/info_card.dart';
 import '../widgets/morph_reveal.dart';
 import 'section_shell.dart';
@@ -16,42 +16,44 @@ class AboutSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return PortfolioSectionShell(
       rawOffsetNotifier: rawOffsetNotifier,
-      label: '── ABOUT',
+      label: '── PLAYER PROFILE',
       triggerAt: 200,
       children: [
         MorphReveal(
           offsetNotifier: rawOffsetNotifier,
           triggerAt: 220,
-          child: GlassPanel(
-            borderAlpha: 0.14,
+          child: HudPanel(
+            borderAlpha: 0.16,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   ProfileData.fullName.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    letterSpacing: 1.2,
-                    fontFamily: 'monospace',
-                  ),
+                  style: AppTypography.heading(size: 18, letterSpacing: 1.2),
                 ),
                 const SizedBox(height: 6),
                 Text(
+                  ProfileData.role,
+                  style: AppTypography.title(
+                    size: 14,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
                   '${ProfileData.headline} · ${ProfileData.tagline}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.secondaryGlow.withValues(alpha: 0.75),
+                  style: AppTypography.body(
+                    size: 12,
+                    color: AppColors.textSecondary.withValues(alpha: 0.85),
                     height: 1.5,
                   ),
                 ),
                 const SizedBox(height: 14),
                 Text(
                   ProfileData.profileSummary,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.white.withValues(alpha: 0.68),
+                  style: AppTypography.body(
+                    size: 13,
+                    color: AppColors.textPrimary.withValues(alpha: 0.68),
                     height: 1.65,
                   ),
                 ),

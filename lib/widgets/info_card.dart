@@ -8,7 +8,7 @@ import '../core/app_theme.dart';
 class InfoCard extends StatefulWidget {
   final String icon, title, body;
   final Color accentColor;
-  const InfoCard({
+  const InfoCard({super.key, 
     required this.icon,
     required this.title,
     required this.body,

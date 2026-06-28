@@ -12,9 +12,7 @@ class TacticBoardApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Joshua Porras — Portfolio',
-        theme: ThemeData.dark().copyWith(
-          scaffoldBackgroundColor: AppColors.background,
-        ),
+        theme: buildAppTheme(),
         home: const TacticBoardScreen(),
       );
 }

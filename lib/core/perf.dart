@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart' show Ticker;
 // ─── Performance tier (mobile web / reduce motion) ───────────────────────
 final animationsPaused = ValueNotifier<bool>(false);
 

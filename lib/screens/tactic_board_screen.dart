@@ -10,10 +10,10 @@ import '../sections/hero_section.dart';
 import '../sections/projects_section.dart';
 import '../sections/skills_section.dart';
 import '../tactic_board/background.dart';
+import '../widgets/balanced_content.dart';
 import '../widgets/jump_to_contact.dart';
 import '../tactic_board/scroll_progress.dart';
 
-// ─── Main Screen ──────────────────────────────────────────────────────────
 class TacticBoardScreen extends StatefulWidget {
   const TacticBoardScreen({super.key});
   @override
@@ -23,10 +23,11 @@ class TacticBoardScreen extends StatefulWidget {
 class _TacticBoardScreenState extends State<TacticBoardScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final ScrollController _scroll = ScrollController();
-  final ValueNotifier<double> _scrollProgress = ValueNotifier<double>(0);
+  final ValueNotifier<double> _heroMorph = ValueNotifier<double>(0);
   final ValueNotifier<double> _rawOffset = ValueNotifier<double>(0);
   final ValueNotifier<bool> _editModeNotifier = ValueNotifier<bool>(false);
   final GlobalKey _contactKey = GlobalKey();
+  final GlobalKey _projectsKey = GlobalKey();
 
   late final AnimationController _auroraCtrl, _entryCtrl;
   late final Animation<double> _entryCurved;
@@ -55,12 +56,17 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
     });
 
     _scroll.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
   }
 
   void _onScroll() {
+    if (!_scroll.hasClients) return;
+
     final offset = _scroll.offset;
-    final p = (offset / 420).clamp(0.0, 1.0);
-    _scrollProgress.value = p;
+    final hero = AppBalance.heroMorphProgress(offset);
+    if ((_heroMorph.value - hero).abs() > 0.001) {
+      _heroMorph.value = hero;
+    }
 
     final published = Perf.lightEffects
         ? (offset / 4).round() * 4.0
@@ -94,17 +100,20 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
     _auroraCtrl.dispose();
     _entryCtrl.dispose();
     _editModeNotifier.dispose();
-    _scrollProgress.dispose();
+    _heroMorph.dispose();
     _rawOffset.dispose();
     LRUTextCache.clear();
     super.dispose();
   }
 
-  void _jumpToContact() {
-    final context = _contactKey.currentContext;
-    if (context != null) {
+  void _jumpToContact() => _jumpToSection(_contactKey);
+  void _jumpToProjects() => _jumpToSection(_projectsKey);
+
+  void _jumpToSection(GlobalKey key) {
+    final ctx = key.currentContext;
+    if (ctx != null) {
       Scrollable.ensureVisible(
-        context,
+        ctx,
         duration: const Duration(milliseconds: 700),
         curve: Curves.easeInOutCubic,
         alignment: 0.05,
@@ -114,11 +123,12 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
 
   @override
   Widget build(BuildContext context) {
+    final inset = AppBalance.horizontalInset(MediaQuery.sizeOf(context).width);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          // Combined background painter (aurora + morph + grid + vignette)
           Positioned.fill(
             child: RepaintBoundary(
               child: ValueListenableBuilder<double>(
@@ -149,7 +159,7 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
                   if (t > 0.35) return const SizedBox.shrink();
                   final alpha = (1.0 - t / 0.35).clamp(0.0, 1.0) * 0.055;
                   return Container(
-                    color: AppColors.neonGlow.withValues(alpha: alpha),
+                    color: AppColors.primary.withValues(alpha: alpha),
                   );
                 },
               ),
@@ -161,15 +171,8 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
             right: 0,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: ValueListenableBuilder<double>(
-                  valueListenable: _scrollProgress,
-                  builder: (_, progress, __) =>
-                      ScrollProgressBar(progress: progress),
-                ),
+                padding: EdgeInsets.fromLTRB(inset, 8, inset, 0),
+                child: ScrollProgressBar(controller: _scroll),
               ),
             ),
           ),
@@ -197,23 +200,31 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
                     ),
                   );
                 },
-                child: Column(
-                  children: [
-                    const SizedBox(height: 100),
-                    HeroSection(
-                      scrollProgressNotifier: _scrollProgress,
-                      editModeNotifier: _editModeNotifier,
-                    ),
-                    AboutSection(rawOffsetNotifier: _rawOffset),
-                    SkillsSection(rawOffsetNotifier: _rawOffset),
-                    ExperienceSection(rawOffsetNotifier: _rawOffset),
-                    ProjectsSection(rawOffsetNotifier: _rawOffset),
-                    ContactSection(
-                      rawOffsetNotifier: _rawOffset,
-                      sectionKey: _contactKey,
-                    ),
-                    SizedBox(height: MediaQuery.of(context).size.height * 0.15),
-                  ],
+                child: BalancedContent(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 100),
+                      HeroSection(
+                        scrollProgressNotifier: _heroMorph,
+                        editModeNotifier: _editModeNotifier,
+                        onViewProjects: _jumpToProjects,
+                      ),
+                      AboutSection(rawOffsetNotifier: _rawOffset),
+                      SkillsSection(rawOffsetNotifier: _rawOffset),
+                      ExperienceSection(rawOffsetNotifier: _rawOffset),
+                      KeyedSubtree(
+                        key: _projectsKey,
+                        child: ProjectsSection(rawOffsetNotifier: _rawOffset),
+                      ),
+                      ContactSection(
+                        rawOffsetNotifier: _rawOffset,
+                        sectionKey: _contactKey,
+                      ),
+                      SizedBox(
+                        height: MediaQuery.sizeOf(context).height * 0.15,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -231,4 +242,3 @@ class _TacticBoardScreenState extends State<TacticBoardScreen>
     );
   }
 }
-

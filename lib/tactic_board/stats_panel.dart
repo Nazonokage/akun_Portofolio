@@ -101,7 +101,7 @@ class _StatsPanelState extends State<StatsPanel>
 
 class FormationReadoutCard extends StatelessWidget {
   final String formation;
-  const FormationReadoutCard({required this.formation});
+  const FormationReadoutCard({super.key, required this.formation});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -144,6 +144,8 @@ class FormationReadoutCard extends StatelessWidget {
 }
 
 class TeamLegendRow extends StatelessWidget {
+  const TeamLegendRow({super.key});
+
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(16),
@@ -162,7 +164,7 @@ class TeamLegendRow extends StatelessWidget {
 class LegendItem extends StatelessWidget {
   final Color color;
   final String label;
-  const LegendItem({required this.color, required this.label});
+  const LegendItem({super.key, required this.color, required this.label});
 
   @override
   Widget build(BuildContext context) => Row(
@@ -195,7 +197,7 @@ class LegendItem extends StatelessWidget {
 }
 
 class TacticalNotesCard extends StatelessWidget {
-  const TacticalNotesCard();
+  const TacticalNotesCard({super.key});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -229,7 +231,7 @@ class TacticalNotesCard extends StatelessWidget {
 
 // ─── Match Bar Row ──────────────────────────────────────────────────────────
 class MatchBarRow extends StatefulWidget {
-  const MatchBarRow();
+  const MatchBarRow({super.key});
   @override
   State<MatchBarRow> createState() => _MatchBarRowState();
 }
@@ -289,7 +291,7 @@ class _MatchBarRowState extends State<MatchBarRow>
 class DualBar extends StatelessWidget {
   final String label;
   final double aVal, bVal, rawA, rawB;
-  const DualBar({
+  const DualBar({super.key, 
     required this.label,
     required this.aVal,
     required this.bVal,
@@ -393,7 +395,7 @@ class DualBar extends StatelessWidget {
 
 // ─── Live Chip ──────────────────────────────────────────────────────────────
 class LiveChip extends StatefulWidget {
-  const LiveChip();
+  const LiveChip({super.key});
   @override
   State<LiveChip> createState() => _LiveChipState();
 }

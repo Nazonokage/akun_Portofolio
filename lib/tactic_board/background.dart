@@ -7,7 +7,6 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../core/app_theme.dart';
 import '../core/perf.dart';
-import '../core/text_layout.dart';
 
 // ─── Combined Background Painter ──────────────────────────────────────────
 class CombinedBgPainter extends CustomPainter {
@@ -217,7 +216,7 @@ class CombinedBgPainter extends CustomPainter {
 
 // ─── Shared top gradient line ─────────────────────────────────────────────
 class TopGradientLine extends StatelessWidget {
-  const TopGradientLine();
+  const TopGradientLine({super.key});
   @override
   Widget build(BuildContext context) => Positioned(
     top: 0,
@@ -261,7 +260,7 @@ final List<Widget> cornerBracketsCache = [
 class BracketWidget extends StatelessWidget {
   final Alignment alignment;
   final Color color;
-  const BracketWidget({required this.alignment, required this.color});
+  const BracketWidget({super.key, required this.alignment, required this.color});
 
   @override
   Widget build(BuildContext context) => Align(
@@ -311,7 +310,7 @@ class BracketPainter extends CustomPainter {
 }
 
 // ─── Space Particles (with trig lookup table) ────────────────────────────
-enum _ParticleKind { dot, crosshair, triangle }
+enum ParticleKind { dot, crosshair, triangle }
 
 class Particle {
   double x,
@@ -327,7 +326,7 @@ class Particle {
       angle,
       angleVel,
       age;
-  final _ParticleKind kind;
+  final ParticleKind kind;
   final double size, opacity, lifespan;
   final Color color;
 
@@ -370,7 +369,7 @@ class TrigTable {
 }
 
 class SpaceParticles extends StatefulWidget {
-  const SpaceParticles();
+  const SpaceParticles({super.key});
   @override
   State<SpaceParticles> createState() => _SpaceParticlesState();
 }
@@ -406,7 +405,7 @@ class _SpaceParticlesState extends State<SpaceParticles>
 
   Particle _spawn({bool randomAge = false}) {
     final kind =
-        _ParticleKind.values[_rng.nextInt(_ParticleKind.values.length)];
+        ParticleKind.values[_rng.nextInt(ParticleKind.values.length)];
     final color = _particleColors[_rng.nextInt(_particleColors.length)];
     final lifespan = 12.0 + _rng.nextDouble() * 20.0;
     final p = Particle(
@@ -533,7 +532,7 @@ class ParticlePainter extends CustomPainter {
     final c = p.color.withValues(alpha: alpha);
     final s = p.size;
     switch (p.kind) {
-      case _ParticleKind.dot:
+      case ParticleKind.dot:
         if (Perf.useBlur) {
           canvas.drawCircle(
             Offset.zero,
@@ -550,7 +549,7 @@ class ParticlePainter extends CustomPainter {
           );
         }
         canvas.drawCircle(Offset.zero, 3.5 * s, Paint()..color = c);
-      case _ParticleKind.crosshair:
+      case ParticleKind.crosshair:
         final r = 8.0 * s;
         final lp = _strokePaint(c, s);
         canvas.drawCircle(Offset.zero, r, lp);
@@ -559,7 +558,7 @@ class ParticlePainter extends CustomPainter {
         canvas.drawLine(Offset(gap, 0), Offset(r + 4, 0), lp);
         canvas.drawLine(Offset(0, -r - 4), Offset(0, -gap), lp);
         canvas.drawLine(Offset(0, gap), Offset(0, r + 4), lp);
-      case _ParticleKind.triangle:
+      case ParticleKind.triangle:
         final r = 7.0 * s;
         final path = Path()
           ..moveTo(0, -r)
@@ -576,7 +575,7 @@ class ParticlePainter extends CustomPainter {
 
 // ─── Scan Line ──────────────────────────────────────────────────────────────
 class ScanLine extends StatefulWidget {
-  const ScanLine();
+  const ScanLine({super.key});
 
   @override
   State<ScanLine> createState() => _ScanLineState();
