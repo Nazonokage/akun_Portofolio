@@ -162,8 +162,8 @@ BoxDecoration glassCardDecoration({
 }) =>
     BoxDecoration(
       border: Border.all(
-        color: (borderColor ?? AppColors.primary)
-            .withValues(alpha: borderAlpha),
+        color:
+            (borderColor ?? AppColors.primary).withValues(alpha: borderAlpha),
         width: AppLayout.borderWidth * 0.5,
       ),
       borderRadius: BorderRadius.circular(radius),
@@ -178,7 +178,8 @@ BoxDecoration glassCardDecoration({
       boxShadow: boxShadow ??
           [
             BoxShadow(
-              color: AppColors.primary.withValues(alpha: AppEffects.glowOpacity),
+              color:
+                  AppColors.primary.withValues(alpha: AppEffects.glowOpacity),
               blurRadius: AppEffects.glowBlur,
               spreadRadius: AppEffects.glowSpread,
             ),
@@ -197,8 +198,7 @@ Widget boardIconBtn(
       tooltip: tooltip,
     );
 
-Widget readoutChip({required String label, required String value}) =>
-    Container(
+Widget readoutChip({required String label, required String value}) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
@@ -217,9 +217,23 @@ Widget readoutChip({required String label, required String value}) =>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: AppTypography.hudLabel()),
+          Flexible(
+            child: Text(
+              label,
+              style: AppTypography.hudLabel(),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
           const SizedBox(width: 8),
-          Text(value, style: AppTypography.mono(size: 12)),
+          Flexible(
+            child: Text(
+              value,
+              style: AppTypography.mono(size: 12),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
         ],
       ),
     );

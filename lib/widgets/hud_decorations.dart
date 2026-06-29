@@ -26,48 +26,54 @@ class HudPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = accentColor ?? AppColors.primary;
-    return IntrinsicHeight(
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            padding: padding,
-            decoration: glassCardDecoration(
-              borderAlpha: borderAlpha,
-              borderColor: accent,
-              boxShadow: [
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.10),
-                  blurRadius: AppEffects.glowBlur,
-                  spreadRadius: AppEffects.glowSpread,
-                ),
-              ],
-            ),
-            child: CustomPaint(
-              painter: showCornerDots
-                  ? _MicroGridPainter(
-                      color: AppColors.grid.withValues(alpha: 0.18),
-                    )
-                  : null,
-              child: child,
-            ),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          padding: padding,
+          decoration: glassCardDecoration(
+            borderAlpha: borderAlpha,
+            borderColor: accent,
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.10),
+                blurRadius: AppEffects.glowBlur,
+                spreadRadius: AppEffects.glowSpread,
+              ),
+            ],
           ),
-          if (showCornerDots) ..._cornerDots(accent),
-          if (showCoordinates)
-            Positioned(
-              top: 6,
-              right: 10,
-              child: Text(
-                _coords(),
-                style: AppTypography.mono(
-                  size: 7,
-                  color: accent.withValues(alpha: 0.35),
-                  letterSpacing: 1,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              if (showCornerDots)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _MicroGridPainter(
+                        color: AppColors.grid.withValues(alpha: 0.18),
+                      ),
+                    ),
+                  ),
                 ),
+              child,
+            ],
+          ),
+        ),
+        if (showCornerDots) ..._cornerDots(accent),
+        if (showCoordinates)
+          Positioned(
+            top: 6,
+            right: 10,
+            child: Text(
+              _coords(),
+              style: AppTypography.mono(
+                size: 7,
+                color: accent.withValues(alpha: 0.35),
+                letterSpacing: 1,
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 

@@ -26,6 +26,12 @@ class CombinedBgPainter extends CustomPainter {
   // Cached aurora blobs (offscreen layer)
   ui.Picture? _auroraPicture;
 
+  // Cached grid pattern (offscreen layer) — only the canvas translate
+  // changes per-frame, the pattern itself is re-recorded only on resize.
+  ui.Picture? _gridPicture;
+  Size? _lastGridSize;
+  static const double _gridStep = 64.0;
+
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
@@ -129,18 +135,29 @@ class CombinedBgPainter extends CustomPainter {
       }
     }
 
-    // Grid
-    final gridPaint = Paint()
-      ..color = AppColors.grid.withValues(alpha: 0.07)
-      ..strokeWidth = 0.4;
-    const step = 64.0;
-    final shift = (scroll * 0.2) % step;
-    for (double x = -shift; x < w; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, h), gridPaint);
+    // Grid — cached pattern, replayed with a cheap translate for parallax.
+    if (_gridPicture == null || _lastGridSize != size) {
+      _lastGridSize = size;
+      final recorder = ui.PictureRecorder();
+      final c = Canvas(recorder);
+      final gridPaint = Paint()
+        ..color = AppColors.grid.withValues(alpha: 0.07)
+        ..strokeWidth = 0.4;
+      // Draw one extra step in each direction so translating by up to
+      // one step never reveals an unpainted edge.
+      for (double x = -_gridStep; x < w + _gridStep; x += _gridStep) {
+        c.drawLine(Offset(x, 0), Offset(x, h), gridPaint);
+      }
+      for (double y = -_gridStep; y < h + _gridStep; y += _gridStep) {
+        c.drawLine(Offset(0, y), Offset(w, y), gridPaint);
+      }
+      _gridPicture = recorder.endRecording();
     }
-    for (double y = -shift; y < h; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(w, y), gridPaint);
-    }
+    final shift = (scroll * 0.2) % _gridStep;
+    canvas.save();
+    canvas.translate(-shift, -shift);
+    canvas.drawPicture(_gridPicture!);
+    canvas.restore();
 
     // Vignette
     canvas.drawRect(
@@ -221,22 +238,22 @@ class TopGradientLine extends StatelessWidget {
   const TopGradientLine({super.key});
   @override
   Widget build(BuildContext context) => Positioned(
-    top: 0,
-    left: 36,
-    right: 36,
-    child: Container(
-      height: 1,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.transparent,
-            AppColors.neonGlow.withValues(alpha: 0.8),
-            Colors.transparent,
-          ],
+        top: 0,
+        left: 36,
+        right: 36,
+        child: Container(
+          height: 1,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.transparent,
+                AppColors.neonGlow.withValues(alpha: 0.8),
+                Colors.transparent,
+              ],
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 }
 
 // ─── Corner Brackets (cached) ──────────────────────────────────────────────
@@ -262,27 +279,28 @@ final List<Widget> cornerBracketsCache = [
 class BracketWidget extends StatelessWidget {
   final Alignment alignment;
   final Color color;
-  const BracketWidget({super.key, required this.alignment, required this.color});
+  const BracketWidget(
+      {super.key, required this.alignment, required this.color});
 
   @override
   Widget build(BuildContext context) => Align(
-    alignment: alignment,
-    child: Padding(
-      padding: const EdgeInsets.all(9),
-      child: SizedBox(
-        width: 14,
-        height: 14,
-        child: CustomPaint(
-          painter: BracketPainter(
-            alignment.x < 0,
-            alignment.y < 0,
-            color,
-            1.5,
+        alignment: alignment,
+        child: Padding(
+          padding: const EdgeInsets.all(9),
+          child: SizedBox(
+            width: 14,
+            height: 14,
+            child: CustomPaint(
+              painter: BracketPainter(
+                alignment.x < 0,
+                alignment.y < 0,
+                color,
+                1.5,
+              ),
+            ),
           ),
         ),
-      ),
-    ),
-  );
+      );
 }
 
 class BracketPainter extends CustomPainter {
@@ -406,8 +424,7 @@ class _SpaceParticlesState extends State<SpaceParticles>
   }
 
   Particle _spawn({bool randomAge = false}) {
-    final kind =
-        ParticleKind.values[_rng.nextInt(ParticleKind.values.length)];
+    final kind = ParticleKind.values[_rng.nextInt(ParticleKind.values.length)];
     final color = _particleColors[_rng.nextInt(_particleColors.length)];
     final lifespan = 12.0 + _rng.nextDouble() * 20.0;
     final p = Particle(
@@ -452,13 +469,11 @@ class _SpaceParticlesState extends State<SpaceParticles>
         _particles[i] = _spawn();
         continue;
       }
-      p.x +=
-          p.vx * dt +
+      p.x += p.vx * dt +
           TrigTable.sin(p.driftPhaseX + p.age * p.driftFreqX * math.pi * 2) *
               p.driftAmpX *
               dt;
-      p.y +=
-          p.vy * dt +
+      p.y += p.vy * dt +
           TrigTable.cos(p.driftPhaseY + p.age * p.driftFreqY * math.pi * 2) *
               p.driftAmpY *
               dt;
@@ -480,21 +495,21 @@ class _SpaceParticlesState extends State<SpaceParticles>
 
   @override
   Widget build(BuildContext context) => VisibilityDetector(
-    key: const Key('space_particles'),
-    onVisibilityChanged: (info) {
-      final visible = info.visibleFraction > 0.01;
-      if (visible != _visible) {
-        _visible = visible;
-        if (!_visible) {
-          _lastTime = Duration.zero; // avoid jump when resuming
-        }
-      }
-    },
-    child: CustomPaint(
-      painter: ParticlePainter(particles: _particles, repaint: _notifier),
-      child: const SizedBox.expand(),
-    ),
-  );
+        key: const Key('space_particles'),
+        onVisibilityChanged: (info) {
+          final visible = info.visibleFraction > 0.01;
+          if (visible != _visible) {
+            _visible = visible;
+            if (!_visible) {
+              _lastTime = Duration.zero; // avoid jump when resuming
+            }
+          }
+        },
+        child: CustomPaint(
+          painter: ParticlePainter(particles: _particles, repaint: _notifier),
+          child: const SizedBox.expand(),
+        ),
+      );
 }
 
 class ParticleNotifier extends ChangeNotifier {
@@ -512,8 +527,7 @@ class ParticlePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final p in particles) {
       final lf = p.age / p.lifespan;
-      final alpha =
-          p.opacity *
+      final alpha = p.opacity *
           (lf / 0.12).clamp(0.0, 1.0) *
           ((1.0 - lf) / 0.12).clamp(0.0, 1.0);
       if (alpha < 0.002) continue;
@@ -662,4 +676,3 @@ class ScanLinePainter extends CustomPainter {
   @override
   bool shouldRepaint(ScanLinePainter old) => old.progress != progress;
 }
-

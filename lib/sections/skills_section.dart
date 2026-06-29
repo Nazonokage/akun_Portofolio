@@ -8,6 +8,7 @@ import '../widgets/hud_decorations.dart';
 import '../widgets/morph_reveal.dart';
 import '../widgets/radar_chart.dart';
 import '../widgets/readouts.dart';
+import '../core/perf.dart';
 import 'section_shell.dart';
 
 class SkillsSection extends StatelessWidget {
@@ -202,26 +203,35 @@ class _SkillBarsPanel extends StatelessWidget {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(AppLayout.padding),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('SELF-ASSESSED READOUTS',
-                          style: AppTypography.hudLabel(
-                              color: AppColors.secondary)),
-                      const SizedBox(height: 18),
-                      ...ProfileData.ratedSkills.map(
-                        (s) => Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: SkillBar(
-                            label: s.name.toUpperCase(),
-                            value: s.normalized,
-                            score: s.score,
-                            maxScore: s.maxScore,
+                  child: ConstrainedBox(
+                    // Prevent RenderFlex overflow on mobile web due to long skill lists.
+                    constraints: BoxConstraints(
+                      maxHeight: Perf.isMobileWeb ? 150 : double.infinity,
+                    ),
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('SELF-ASSESSED READOUTS',
+                              style: AppTypography.hudLabel(
+                                  color: AppColors.secondary)),
+                          const SizedBox(height: 18),
+                          ...ProfileData.ratedSkills.map(
+                            (s) => Padding(
+                              padding: const EdgeInsets.only(bottom: 14),
+                              child: SkillBar(
+                                label: s.name.toUpperCase(),
+                                value: s.normalized,
+                                score: s.score,
+                                maxScore: s.maxScore,
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),

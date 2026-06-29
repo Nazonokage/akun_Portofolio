@@ -50,6 +50,9 @@ class _MorphRevealState extends State<MorphReveal> {
       _pending = false;
       if (mounted && widget.offsetNotifier.value >= widget.triggerAt) {
         setState(() => _visible = true);
+        // Once revealed, this section never needs to react to scroll again —
+        // drop the listener so it stops getting invoked on every scroll tick.
+        widget.offsetNotifier.removeListener(_checkTrigger);
       }
     });
   }
@@ -72,15 +75,15 @@ class _MorphRevealState extends State<MorphReveal> {
       );
     }
     return AnimatedOpacity(
-        opacity: _visible ? 1.0 : 0.0,
+      opacity: _visible ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 750),
+      curve: Curves.easeOut,
+      child: AnimatedSlide(
+        offset: _visible ? Offset.zero : const Offset(0, 0.08),
         duration: const Duration(milliseconds: 750),
         curve: Curves.easeOut,
-        child: AnimatedSlide(
-          offset: _visible ? Offset.zero : const Offset(0, 0.08),
-          duration: const Duration(milliseconds: 750),
-          curve: Curves.easeOut,
-          child: widget.child,
-        ),
-      );
+        child: widget.child,
+      ),
+    );
   }
 }

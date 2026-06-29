@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import '../core/app_theme.dart';
 import '../core/perf.dart';
@@ -58,7 +59,10 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
     _passAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 20000),
-    )..repeat();
+    );
+    if (!Perf.isMobileWeb) {
+      _passAnim.repeat();
+    }
     animationsPaused.addListener(_syncAnimPause);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _recomputeFormation();
@@ -196,46 +200,74 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
   }
 
   Widget _buildControls({required bool compact}) => BoardControls(
-    compact: compact,
-    pulsingLabel: _dragMode
-        ? (compact
-              ? 'DRAG MODE'
-              : 'DRAG MODE  ·  MOVE PLAYERS  (GK LOCKED)')
-        : (compact
-              ? 'TAP TO SELECT'
-              : 'DRAG  ·  TILT  ·  TAP  TO  SELECT'),
-    formationLabel: compact ? 'FMT' : 'FORMATION',
-    formationValue: _formationString,
-    dragMode: _dragMode,
-    showHeatmap: _showHeatmap,
-    expanded: _expanded,
-    onToggleDragMode: _toggleDragMode,
-    onToggleHeatmap: _toggleHeatmap,
-    onToggleExpand: _toggleExpand,
-    onUndo: _historyIndex > 0 ? _undo : null,
-    onRedo: _historyIndex < _history.length - 1 ? _redo : null,
-  );
+        compact: compact,
+        pulsingLabel: _dragMode
+            ? (compact
+                ? 'DRAG MODE'
+                : 'DRAG MODE  ·  MOVE PLAYERS  (GK LOCKED)')
+            : (compact ? 'TAP TO SELECT' : 'DRAG  ·  TILT  ·  TAP  TO  SELECT'),
+        formationLabel: compact ? 'FMT' : 'FORMATION',
+        formationValue: _formationString,
+        dragMode: _dragMode,
+        showHeatmap: _showHeatmap,
+        expanded: _expanded,
+        onToggleDragMode: _toggleDragMode,
+        onToggleHeatmap: _toggleHeatmap,
+        onToggleExpand: _toggleExpand,
+        onUndo: _historyIndex > 0 ? _undo : null,
+        onRedo: _historyIndex < _history.length - 1 ? _redo : null,
+      );
 
   Widget _buildFullscreenOverlay(Size screenSize) => FullscreenOverlay(
-    isMobile: screenSize.shortestSide < 600,
-    onClose: _toggleExpand,
-    dragMode: _dragMode,
-    onToggleEdit: _toggleDragMode,
-    historyIndex: _historyIndex,
-    historyLength: _history.length,
-    onUndo: _historyIndex > 0 ? _undo : null,
-    onRedo: _historyIndex < _history.length - 1 ? _redo : null,
-    child: _buildBoardContent(
-      screenSize,
-      rotateNumbers: screenSize.shortestSide < 600,
-    ),
-  );
+        isMobile: screenSize.shortestSide < 600,
+        onClose: _toggleExpand,
+        dragMode: _dragMode,
+        onToggleEdit: _toggleDragMode,
+        historyIndex: _historyIndex,
+        historyLength: _history.length,
+        onUndo: _historyIndex > 0 ? _undo : null,
+        onRedo: _historyIndex < _history.length - 1 ? _redo : null,
+        child: _buildBoardContent(
+          screenSize,
+          rotateNumbers: screenSize.shortestSide < 600,
+        ),
+      );
+
+  void _pauseAnimationsIfOffscreen(bool offscreen) {
+    if (offscreen) {
+      _levitate.stop();
+      _pulse.stop();
+      _passAnim.stop();
+    } else {
+      if (Perf.enableLevitate) {
+        _levitate.repeat(reverse: true);
+      }
+      _pulse.repeat(reverse: true);
+      _passAnim.repeat();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final isLandscape = screenSize.width > screenSize.height;
     final isMobileLandscape = isLandscape && screenSize.height < 500;
+
+    final board = VisibilityDetector(
+      key: const Key('floating_tactic_board_visibility'),
+      onVisibilityChanged: (info) {
+        // On mobile browsers this component is heavy; pause when it leaves view.
+        if (Perf.isMobileWeb) {
+          final offscreen = info.visibleFraction <= 0.01;
+          if (offscreen != animationsPaused.value) {
+            animationsPaused.value = offscreen;
+          }
+
+          _pauseAnimationsIfOffscreen(offscreen);
+        }
+      },
+      child: RepaintBoundary(child: _buildBoardContent(screenSize)),
+    );
 
     if (isMobileLandscape) {
       return Stack(
@@ -244,7 +276,7 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              RepaintBoundary(child: _buildBoardContent(screenSize)),
+              board,
               const SizedBox(width: 12),
               _buildControls(compact: true),
             ],
@@ -301,7 +333,8 @@ class FullscreenOverlay extends StatelessWidget {
   final VoidCallback? onUndo;
   final VoidCallback? onRedo;
 
-  const FullscreenOverlay({super.key, 
+  const FullscreenOverlay({
+    super.key,
     required this.child,
     required this.onClose,
     required this.isMobile,
@@ -325,9 +358,8 @@ class FullscreenOverlay extends StatelessWidget {
       child: FittedBox(fit: BoxFit.contain, child: child),
     );
 
-    final content = isMobile
-        ? RotatedBox(quarterTurns: 3, child: board)
-        : board;
+    final content =
+        isMobile ? RotatedBox(quarterTurns: 3, child: board) : board;
 
     return Positioned.fill(
       child: Material(
@@ -356,9 +388,8 @@ class FullscreenOverlay extends StatelessWidget {
                       children: [
                         OverlayIconBtn(
                           icon: dragMode ? Icons.edit_off : Icons.edit,
-                          color: dragMode
-                              ? AppColors.accent3
-                              : AppColors.neonGlow,
+                          color:
+                              dragMode ? AppColors.accent3 : AppColors.neonGlow,
                           onTap: onToggleEdit,
                           tooltip: dragMode ? 'Exit Edit Mode' : 'Edit Mode',
                           active: dragMode,
@@ -423,7 +454,8 @@ class OverlayIconBtn extends StatelessWidget {
   final String tooltip;
   final bool active;
 
-  const OverlayIconBtn({super.key, 
+  const OverlayIconBtn({
+    super.key,
     required this.icon,
     required this.color,
     required this.onTap,
@@ -433,30 +465,30 @@ class OverlayIconBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Tooltip(
-    message: tooltip,
-    child: GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: active
-              ? AppColors.accent3.withValues(alpha: 0.15)
-              : AppColors.frame.withValues(alpha: 0.60),
-          border: Border.all(
-            color: color.withValues(alpha: onTap != null ? 0.45 : 0.18),
-            width: 1.2,
+        message: tooltip,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: active
+                  ? AppColors.accent3.withValues(alpha: 0.15)
+                  : AppColors.frame.withValues(alpha: 0.60),
+              border: Border.all(
+                color: color.withValues(alpha: onTap != null ? 0.45 : 0.18),
+                width: 1.2,
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: color.withValues(alpha: onTap != null ? 1.0 : 0.35),
+              size: 18,
+            ),
           ),
         ),
-        child: Icon(
-          icon,
-          color: color.withValues(alpha: onTap != null ? 1.0 : 0.35),
-          size: 18,
-        ),
-      ),
-    ),
-  );
+      );
 }
 
 class OverlayGridPainter extends CustomPainter {
@@ -483,33 +515,33 @@ class OverlayCornerBrackets extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Stack(
-    children: [
-      for (final a in [
-        const Alignment(-1.0, -1.0),
-        const Alignment(1.0, -1.0),
-        const Alignment(-1.0, 1.0),
-        const Alignment(1.0, 1.0),
-      ])
-        Align(
-          alignment: a,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: SizedBox(
-              width: 28,
-              height: 28,
-              child: CustomPaint(
-                painter: BracketPainter(
-                  a.x < 0,
-                  a.y < 0,
-                  AppColors.neonGlow.withValues(alpha: 0.35),
-                  1.8,
+        children: [
+          for (final a in [
+            const Alignment(-1.0, -1.0),
+            const Alignment(1.0, -1.0),
+            const Alignment(-1.0, 1.0),
+            const Alignment(1.0, 1.0),
+          ])
+            Align(
+              alignment: a,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CustomPaint(
+                    painter: BracketPainter(
+                      a.x < 0,
+                      a.y < 0,
+                      AppColors.neonGlow.withValues(alpha: 0.35),
+                      1.8,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-    ],
-  );
+        ],
+      );
 }
 
 class ExitFullscreenBtn extends StatefulWidget {
@@ -543,49 +575,52 @@ class _ExitFullscreenBtnState extends State<ExitFullscreenBtn>
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTapDown: (_) => _ctrl.forward(),
-    onTapUp: (_) {
-      _ctrl.reverse();
-      widget.onTap();
-    },
-    onTapCancel: () => _ctrl.reverse(),
-    child: MouseRegion(
-      onEnter: (_) => _ctrl.forward(),
-      onExit: (_) => _ctrl.reverse(),
-      child: AnimatedBuilder(
-        animation: _t,
-        builder: (_, __) => Transform.scale(
-          scale: 1.0 + _t.value * 0.12,
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.frame.withValues(alpha: 0.72 + _t.value * 0.18),
-              border: Border.all(
-                color: AppColors.neonGlow.withValues(
-                  alpha: 0.25 + _t.value * 0.55,
+        onTapDown: (_) => _ctrl.forward(),
+        onTapUp: (_) {
+          _ctrl.reverse();
+          widget.onTap();
+        },
+        onTapCancel: () => _ctrl.reverse(),
+        child: MouseRegion(
+          onEnter: (_) => _ctrl.forward(),
+          onExit: (_) => _ctrl.reverse(),
+          child: AnimatedBuilder(
+            animation: _t,
+            builder: (_, __) => Transform.scale(
+              scale: 1.0 + _t.value * 0.12,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color:
+                      AppColors.frame.withValues(alpha: 0.72 + _t.value * 0.18),
+                  border: Border.all(
+                    color: AppColors.neonGlow.withValues(
+                      alpha: 0.25 + _t.value * 0.55,
+                    ),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color:
+                          AppColors.neonGlow.withValues(alpha: _t.value * 0.25),
+                      blurRadius: 16,
+                      spreadRadius: 2,
+                    ),
+                  ],
                 ),
-                width: 1.2,
+                child: Icon(
+                  Icons.close_rounded,
+                  color: AppColors.neonGlow
+                      .withValues(alpha: 0.7 + _t.value * 0.3),
+                  size: 20,
+                ),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.neonGlow.withValues(alpha: _t.value * 0.25),
-                  blurRadius: 16,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: Icon(
-              Icons.close_rounded,
-              color: AppColors.neonGlow.withValues(alpha: 0.7 + _t.value * 0.3),
-              size: 20,
             ),
           ),
         ),
-      ),
-    ),
-  );
+      );
 }
 
 // ─── Pulsing Label ──────────────────────────────────────────────────────────
@@ -628,18 +663,18 @@ class _PulsingLabelState extends State<PulsingLabel>
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _ctrl,
-    builder: (_, __) => Text(
-      widget.label,
-      style: TextStyle(
-        fontSize: 10,
-        letterSpacing: 3.5,
-        color: AppColors.secondaryGlow.withValues(
-          alpha: 0.35 + _ctrl.value * 0.38,
+        animation: _ctrl,
+        builder: (_, __) => Text(
+          widget.label,
+          style: TextStyle(
+            fontSize: 10,
+            letterSpacing: 3.5,
+            color: AppColors.secondaryGlow.withValues(
+              alpha: 0.35 + _ctrl.value * 0.38,
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 }
 
 // ─── Tilt Card ──────────────────────────────────────────────────────────────
@@ -655,7 +690,8 @@ class TiltCard extends StatelessWidget {
   final bool rotateNumbers;
   final Size screenSize;
 
-  const TiltCard({super.key, 
+  const TiltCard({
+    super.key,
     required this.pulseAnim,
     required this.passAnim,
     required this.selectedPlayer,
@@ -671,122 +707,122 @@ class TiltCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    width: 336,
-    height: 252,
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(22),
-      color: AppColors.frame.withValues(alpha: 0.88),
-      border: Border.all(
-        color: AppColors.neonGlow.withValues(alpha: 0.22),
-        width: 1.3,
-      ),
-      boxShadow: Perf.lightEffects
-          ? [
-              BoxShadow(
-                color: AppColors.neonGlow.withValues(alpha: 0.10),
-                blurRadius: 24,
-                spreadRadius: 2,
-              ),
-            ]
-          : [
-              BoxShadow(
-                color: AppColors.neonGlow.withValues(alpha: 0.12),
-                blurRadius: 40,
-                spreadRadius: 3,
-              ),
-              BoxShadow(
-                color: AppColors.teamB.withValues(alpha: 0.04),
-                blurRadius: 60,
-                spreadRadius: 8,
-              ),
-              BoxShadow(
-                color: AppColors.hologram.withValues(alpha: 0.07),
-                blurRadius: 80,
-                spreadRadius: 16,
-              ),
+        width: 336,
+        height: 252,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          color: AppColors.frame.withValues(alpha: 0.88),
+          border: Border.all(
+            color: AppColors.neonGlow.withValues(alpha: 0.22),
+            width: 1.3,
+          ),
+          boxShadow: Perf.lightEffects
+              ? [
+                  BoxShadow(
+                    color: AppColors.neonGlow.withValues(alpha: 0.10),
+                    blurRadius: 24,
+                    spreadRadius: 2,
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: AppColors.neonGlow.withValues(alpha: 0.12),
+                    blurRadius: 40,
+                    spreadRadius: 3,
+                  ),
+                  BoxShadow(
+                    color: AppColors.teamB.withValues(alpha: 0.04),
+                    blurRadius: 60,
+                    spreadRadius: 8,
+                  ),
+                  BoxShadow(
+                    color: AppColors.hologram.withValues(alpha: 0.07),
+                    blurRadius: 80,
+                    spreadRadius: 16,
+                  ),
+                ],
+          gradient: LinearGradient(
+            begin: const Alignment(0, 0),
+            end: Alignment.bottomRight,
+            colors: [
+              AppColors.neonGlow.withValues(alpha: 0.10),
+              AppColors.frame.withValues(alpha: 0.92),
+              AppColors.grid.withValues(alpha: 0.28),
             ],
-      gradient: LinearGradient(
-        begin: const Alignment(0, 0),
-        end: Alignment.bottomRight,
-        colors: [
-          AppColors.neonGlow.withValues(alpha: 0.10),
-          AppColors.frame.withValues(alpha: 0.92),
-          AppColors.grid.withValues(alpha: 0.28),
-        ],
-      ),
-    ),
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: Stack(
-        children: [
-          const TopGradientLine(),
-          ...cornerBracketsCache,
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: RepaintBoundary(
-                child: PitchWidget(
-                  pulseAnim: pulseAnim,
-                  passAnim: passAnim,
-                  selectedPlayer: selectedPlayer,
-                  onPlayerTapped: onPlayerTapped,
-                  dragModeEnabled: dragModeEnabled,
-                  customPositions: customPositions,
-                  onPlayerDragged: onPlayerDragged,
-                  showHeatmap: showHeatmap,
-                  rotateNumbers: rotateNumbers,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Stack(
+            children: [
+              const TopGradientLine(),
+              ...cornerBracketsCache,
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: RepaintBoundary(
+                    child: PitchWidget(
+                      pulseAnim: pulseAnim,
+                      passAnim: passAnim,
+                      selectedPlayer: selectedPlayer,
+                      onPlayerTapped: onPlayerTapped,
+                      dragModeEnabled: dragModeEnabled,
+                      customPositions: customPositions,
+                      onPlayerDragged: onPlayerDragged,
+                      showHeatmap: showHeatmap,
+                      rotateNumbers: rotateNumbers,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: HoloPainter(specularX: 0.5, specularY: 0.5),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: HoloPainter(specularX: 0.5, specularY: 0.5),
+                  ),
+                ),
               ),
-            ),
-          ),
-          Positioned(
-            top: 12,
-            right: 14,
-            child: Text(
-              formationString,
-              style: TextStyle(
-                fontSize: 8,
-                letterSpacing: 2.5,
-                color: AppColors.neonGlow.withValues(alpha: 0.45),
+              Positioned(
+                top: 12,
+                right: 14,
+                child: Text(
+                  formationString,
+                  style: TextStyle(
+                    fontSize: 8,
+                    letterSpacing: 2.5,
+                    color: AppColors.neonGlow.withValues(alpha: 0.45),
+                  ),
+                ),
               ),
-            ),
-          ),
-          Positioned(
-            bottom: 12,
-            left: 14,
-            child: Text(
-              'PASS LINES  ON',
-              style: TextStyle(
-                fontSize: 7,
-                letterSpacing: 1.8,
-                color: AppColors.hologram.withValues(alpha: 0.38),
+              Positioned(
+                bottom: 12,
+                left: 14,
+                child: Text(
+                  'PASS LINES  ON',
+                  style: TextStyle(
+                    fontSize: 7,
+                    letterSpacing: 1.8,
+                    color: AppColors.hologram.withValues(alpha: 0.38),
+                  ),
+                ),
               ),
-            ),
-          ),
-          Positioned(
-            bottom: 12,
-            right: 14,
-            child: Text(
-              '0° 0°',
-              style: TextStyle(
-                fontSize: 7,
-                letterSpacing: 1.2,
-                fontFamily: 'monospace',
-                color: AppColors.secondaryGlow.withValues(alpha: 0.28),
+              Positioned(
+                bottom: 12,
+                right: 14,
+                child: Text(
+                  '0° 0°',
+                  style: TextStyle(
+                    fontSize: 7,
+                    letterSpacing: 1.2,
+                    fontFamily: 'monospace',
+                    color: AppColors.secondaryGlow.withValues(alpha: 0.28),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
 }
 
 // ─── Holo Painter (cached shaders) ─────────────────────────────────────────
@@ -828,4 +864,3 @@ class HoloPainter extends CustomPainter {
   bool shouldRepaint(HoloPainter old) =>
       old.specularX != specularX || old.specularY != specularY;
 }
-

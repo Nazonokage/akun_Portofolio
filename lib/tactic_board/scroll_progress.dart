@@ -14,7 +14,7 @@ class ScrollProgressBar extends StatefulWidget {
 }
 
 class _ScrollProgressBarState extends State<ScrollProgressBar> {
-  double _depth = 0;
+  final ValueNotifier<double> _depth = ValueNotifier<double>(0);
 
   @override
   void initState() {
@@ -37,21 +37,20 @@ class _ScrollProgressBarState extends State<ScrollProgressBar> {
     if (!widget.controller.hasClients) return;
     final pos = widget.controller.position;
     final next = AppBalance.scrollDepth(pos.pixels, pos.maxScrollExtent);
-    if ((_depth - next).abs() > 0.001 && mounted) {
-      setState(() => _depth = next);
+    if ((_depth.value - next).abs() > 0.001) {
+      _depth.value = next;
     }
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_syncDepth);
+    _depth.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final pct = (_depth * 100).round();
-
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 14),
       decoration: BoxDecoration(
@@ -80,23 +79,29 @@ class _ScrollProgressBarState extends State<ScrollProgressBar> {
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: _depth,
-                backgroundColor: AppColors.grid.withValues(alpha: 0.35),
-                color: AppColors.primary,
-                minHeight: 5,
+              child: ValueListenableBuilder<double>(
+                valueListenable: _depth,
+                builder: (_, depth, __) => LinearProgressIndicator(
+                  value: depth,
+                  backgroundColor: AppColors.grid.withValues(alpha: 0.35),
+                  color: AppColors.primary,
+                  minHeight: 5,
+                ),
               ),
             ),
           ),
           const SizedBox(width: 10),
           SizedBox(
             width: 36,
-            child: Text(
-              '$pct%',
-              textAlign: TextAlign.right,
-              style: AppTypography.mono(
-                size: 10,
-                color: AppColors.primary,
+            child: ValueListenableBuilder<double>(
+              valueListenable: _depth,
+              builder: (_, depth, __) => Text(
+                '${(depth * 100).round()}%',
+                textAlign: TextAlign.right,
+                style: AppTypography.mono(
+                  size: 10,
+                  color: AppColors.primary,
+                ),
               ),
             ),
           ),

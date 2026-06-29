@@ -118,13 +118,11 @@ class _HoverCardState extends State<HoverCard> {
           ),
           Positioned.fill(
             child: IgnorePointer(
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 300),
-                opacity: _active ? 1.0 : 0.0,
-                child: CustomPaint(
-                  painter: CornerBracketPainter(widget.accent),
-                ),
-              ),
+              child: _active
+                  ? CustomPaint(
+                      painter: CornerBracketPainter(widget.accent),
+                    )
+                  : const SizedBox.shrink(),
             ),
           ),
         ],

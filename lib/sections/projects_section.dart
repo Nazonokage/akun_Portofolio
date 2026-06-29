@@ -171,6 +171,23 @@ class _AlternatingGrid extends StatelessWidget {
       );
     }
 
+    // On mobile web (narrow widths), force single-column.
+    // The alternating 2-column Rows can still overflow due to intrinsic
+    // sizing of the card content.
+    if (Perf.isMobileWeb) {
+      return Column(
+        children: projects
+            .asMap()
+            .entries
+            .map((e) => Padding(
+                  padding: EdgeInsets.only(
+                      bottom: e.key < projects.length - 1 ? 16 : 0),
+                  child: _reveal(e.key, e.value, CrossAxisAlignment.start),
+                ))
+            .toList(),
+      );
+    }
+
     final rows = <Widget>[];
     for (var i = 0; i < projects.length; i += 2) {
       final flip = (i ~/ 2).isOdd;
@@ -318,134 +335,155 @@ class _ProjectCardState extends State<_ProjectCard>
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Header: badge + year
-                              Row(children: [
-                                if (!stripeLeft) ...[
-                                  _catBadge(accent),
-                                  const Spacer()
-                                ],
-                                Text(p.year,
-                                    style: AppTypography.mono(
-                                        size: 9,
-                                        color: accent.withValues(alpha: 0.7))),
-                                if (stripeLeft) ...[
-                                  const Spacer(),
-                                  _catBadge(accent)
-                                ],
-                              ]),
-                              const SizedBox(height: 8),
-                              Text(p.name.toUpperCase(),
-                                  style: AppTypography.heading(
-                                      size: 14,
-                                      color: accent,
-                                      letterSpacing: 1.0)),
-                              const SizedBox(height: 3),
-                              Text(p.subtitle,
-                                  style: AppTypography.body(
-                                      size: 11,
-                                      color: AppColors.textSecondary
-                                          .withValues(alpha: 0.85))),
-                              const SizedBox(height: 8),
-
-                              // Stack chips
-                              Wrap(
-                                spacing: 5,
-                                runSpacing: 4,
-                                children: p.stack
-                                    .split('·')
-                                    .map((t) => Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                accent.withValues(alpha: 0.06),
-                                            border: Border.all(
-                                                color: accent.withValues(
-                                                    alpha: 0.2)),
-                                            borderRadius:
-                                                BorderRadius.circular(2),
-                                          ),
-                                          child: Text(t.trim(),
-                                              style: AppTypography.mono(
-                                                  size: 8,
-                                                  color: AppColors.primary
-                                                      .withValues(alpha: 0.65),
-                                                  letterSpacing: 0.3)),
-                                        ))
-                                    .toList(),
-                              ),
-                              const SizedBox(height: 10),
-
-                              // Divider
-                              Container(
-                                height: 1,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: stripeLeft
-                                        ? Alignment.centerLeft
-                                        : Alignment.centerRight,
-                                    end: stripeLeft
-                                        ? Alignment.centerRight
-                                        : Alignment.centerLeft,
-                                    colors: [
-                                      accent.withValues(alpha: 0.5),
-                                      accent.withValues(alpha: 0.0)
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              // Prevent RenderFlex overflow on mobile web.
+                              maxHeight:
+                                  Perf.isMobileWeb ? 220 : double.infinity,
+                            ),
+                            child: SingleChildScrollView(
+                              physics: const BouncingScrollPhysics(),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Header: badge + year
+                                  Wrap(
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    spacing: 6,
+                                    runSpacing: 0,
+                                    children: [
+                                      if (!stripeLeft) _catBadge(accent),
+                                      Text(
+                                        p.year,
+                                        style: AppTypography.mono(
+                                          size: 9,
+                                          color: accent.withValues(alpha: 0.7),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (stripeLeft) _catBadge(accent),
                                     ],
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
+                                  const SizedBox(height: 8),
+                                  Text(p.name.toUpperCase(),
+                                      style: AppTypography.heading(
+                                          size: 14,
+                                          color: accent,
+                                          letterSpacing: 1.0)),
+                                  const SizedBox(height: 3),
+                                  Text(p.subtitle,
+                                      style: AppTypography.body(
+                                          size: 11,
+                                          color: AppColors.textSecondary
+                                              .withValues(alpha: 0.85))),
+                                  const SizedBox(height: 8),
 
-                              // Bullets
-                              ...p.bullets.map((b) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 5),
-                                    child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Padding(
-                                            padding:
-                                                const EdgeInsets.only(top: 2),
-                                            child: Text('▸',
-                                                style: AppTypography.mono(
-                                                    size: 9,
+                                  // Stack chips
+                                  Wrap(
+                                    spacing: 5,
+                                    runSpacing: 4,
+                                    children: p.stack
+                                        .split('·')
+                                        .map((t) => Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: accent.withValues(
+                                                    alpha: 0.06),
+                                                border: Border.all(
                                                     color: accent.withValues(
-                                                        alpha: 0.7))),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                              child: Text(b,
-                                                  style: AppTypography.body(
-                                                      size: 11,
-                                                      color: AppColors
-                                                          .textPrimary
+                                                        alpha: 0.2)),
+                                                borderRadius:
+                                                    BorderRadius.circular(2),
+                                              ),
+                                              child: Text(t.trim(),
+                                                  style: AppTypography.mono(
+                                                      size: 8,
+                                                      color: AppColors.primary
                                                           .withValues(
                                                               alpha: 0.65),
-                                                      height: 1.5))),
-                                        ]),
-                                  )),
+                                                      letterSpacing: 0.3)),
+                                            ))
+                                        .toList(),
+                                  ),
+                                  const SizedBox(height: 10),
 
-                              // Links
-                              if (p.githubUrl != null || p.liveUrl != null) ...[
-                                const SizedBox(height: 10),
-                                Wrap(spacing: 8, children: [
-                                  if (p.githubUrl != null)
-                                    _LinkChip(
-                                        label: '⟨/⟩  GITHUB',
-                                        onTap: () => _openUrl(p.githubUrl!),
-                                        color: accent),
-                                  if (p.liveUrl != null)
-                                    _LinkChip(
-                                        label: '↗  LIVE',
-                                        onTap: () => _openUrl(p.liveUrl!),
-                                        color: AppColors.success),
-                                ]),
-                              ],
-                            ],
+                                  // Divider
+                                  Container(
+                                    height: 1,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: stripeLeft
+                                            ? Alignment.centerLeft
+                                            : Alignment.centerRight,
+                                        end: stripeLeft
+                                            ? Alignment.centerRight
+                                            : Alignment.centerLeft,
+                                        colors: [
+                                          accent.withValues(alpha: 0.5),
+                                          accent.withValues(alpha: 0.0)
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+
+                                  // Bullets
+                                  ...p.bullets.map((b) => Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 5),
+                                        child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                    top: 2),
+                                                child: Text('▸',
+                                                    style: AppTypography.mono(
+                                                        size: 9,
+                                                        color:
+                                                            accent.withValues(
+                                                                alpha: 0.7))),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Expanded(
+                                                  child: Text(b,
+                                                      style: AppTypography.body(
+                                                          size: 11,
+                                                          color: AppColors
+                                                              .textPrimary
+                                                              .withValues(
+                                                                  alpha: 0.65),
+                                                          height: 1.5))),
+                                            ]),
+                                      )),
+
+                                  // Links
+                                  if (p.githubUrl != null ||
+                                      p.liveUrl != null) ...[
+                                    const SizedBox(height: 10),
+                                    Wrap(spacing: 8, children: [
+                                      if (p.githubUrl != null)
+                                        _LinkChip(
+                                            label: '⟨/⟩  GITHUB',
+                                            onTap: () => _openUrl(p.githubUrl!),
+                                            color: accent),
+                                      if (p.liveUrl != null)
+                                        _LinkChip(
+                                            label: '↗  LIVE',
+                                            onTap: () => _openUrl(p.liveUrl!),
+                                            color: AppColors.success),
+                                    ]),
+                                  ],
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
