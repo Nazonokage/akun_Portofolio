@@ -107,7 +107,7 @@ class AboutCard {
 }
 
 class ProfileData {
-  static const fullName = 'Joshua Hanpil V. Porras';
+  static const fullName = 'Joshua V. Porras';
   static const role = 'Flutter Developer | Tactical Interface Engineer';
   static const headline = 'Information Technology Graduate';
   static const tagline = 'Technical Support & Solutions Engineering';
