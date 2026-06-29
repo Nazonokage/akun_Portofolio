@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/app_theme.dart';
+import '../core/perf.dart';
 import '../data/profile_data.dart';
-import '../widgets/glass_panel.dart';
+import '../widgets/hover_card.dart';
 import '../widgets/morph_reveal.dart';
 import '../widgets/readouts.dart';
 import 'section_shell.dart';
@@ -34,7 +35,6 @@ class ContactSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isWide = MediaQuery.sizeOf(context).width > AppBalance.wideBreakpoint;
     final links = ProfileData.contactLinks;
 
     return PortfolioSectionShell(
@@ -45,29 +45,18 @@ class ContactSection extends StatelessWidget {
         MorphReveal(
           offsetNotifier: rawOffsetNotifier,
           triggerAt: 1000,
-          child: isWide
-              ? IntrinsicHeight(
-                  child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(flex: 4, child: _OpenChannelPanel()),
-                        SizedBox(width: AppLayout.spacing),
-                        Expanded(
-                            flex: 6,
-                            child: _ContactGrid(
-                                links: links,
-                                notifier: rawOffsetNotifier,
-                                openLink: _openLink)),
-                      ]),
-                )
-              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _OpenChannelPanel(),
-                  SizedBox(height: AppLayout.spacing),
-                  _ContactGrid(
-                      links: links,
-                      notifier: rawOffsetNotifier,
-                      openLink: _openLink),
-                ]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _OpenChannelPanel(),
+              SizedBox(height: AppLayout.spacing),
+              _ContactGrid(
+                links: links,
+                notifier: rawOffsetNotifier,
+                openLink: _openLink,
+              ),
+            ],
+          ),
         ),
         SizedBox(height: AppLayout.spacing),
         MorphReveal(
@@ -77,9 +66,10 @@ class ContactSection extends StatelessWidget {
           child: Text(
             '© ${DateTime.now().year} ${ProfileData.fullName}',
             style: AppTypography.caption(
-                size: 10,
-                color: AppColors.textSecondary.withValues(alpha: 0.45),
-                letterSpacing: 1),
+              size: 10,
+              color: AppColors.textSecondary.withValues(alpha: 0.45),
+              letterSpacing: 1,
+            ),
           ),
         ),
       ],
@@ -87,7 +77,7 @@ class ContactSection extends StatelessWidget {
   }
 }
 
-// ── Open Channel panel — HUD styled ──────────────────────────────────────────
+// ── Open Channel — Valorant schema style (matches project cards) ────────────
 
 class _OpenChannelPanel extends StatefulWidget {
   @override
@@ -96,9 +86,17 @@ class _OpenChannelPanel extends StatefulWidget {
 
 class _OpenChannelPanelState extends State<_OpenChannelPanel>
     with SingleTickerProviderStateMixin {
+  static const _accent = AppColors.secondary;
+
   late final AnimationController _blink = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 900))
-    ..repeat(reverse: true);
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  bool _hovered = false;
+  bool _tapActive = false;
+
+  bool get _active => _hovered || _tapActive;
 
   @override
   void dispose() {
@@ -106,76 +104,235 @@ class _OpenChannelPanelState extends State<_OpenChannelPanel>
     super.dispose();
   }
 
+  void _tapFeedback() {
+    if (!Perf.isMobileWeb) return;
+    setState(() => _tapActive = true);
+    Future.delayed(const Duration(milliseconds: 450), () {
+      if (mounted) setState(() => _tapActive = false);
+    });
+  }
+
   @override
-  Widget build(BuildContext context) => GlassPanel(
-        borderAlpha: 0.18,
-        child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: _tapFeedback,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          transform: Matrix4.translationValues(0, _active ? -3 : 0, 0),
+          decoration: BoxDecoration(
+            boxShadow: _active
+                ? [
+                    BoxShadow(
+                      color: _accent.withValues(alpha: 0.22),
+                      blurRadius: 24,
+                      spreadRadius: 2,
+                    ),
+                  ]
+                : [],
+          ),
+          child: Stack(
             children: [
-              // Status row
-              Row(children: [
-                FadeTransition(
-                  opacity: _blink,
-                  child: Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.secondary,
-                      boxShadow: [
-                        BoxShadow(
-                            color: AppColors.secondary.withValues(alpha: 0.7),
-                            blurRadius: 6)
-                      ],
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface.withValues(alpha: 0.55),
+                  border: Border.all(
+                    color: _accent.withValues(alpha: _active ? 0.5 : 0.2),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ChannelStripe(hovered: _active),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(children: [
+                              FadeTransition(
+                                opacity: _blink,
+                                child: Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: _accent,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: _accent.withValues(alpha: 0.7),
+                                        blurRadius: 6,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'OPEN CHANNEL',
+                                style: AppTypography.hudLabel(color: _accent),
+                              ),
+                              const Spacer(),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: _accent.withValues(
+                                      alpha: _active ? 0.7 : 0.4,
+                                    ),
+                                  ),
+                                  color: _accent.withValues(
+                                    alpha: _active ? 0.14 : 0.08,
+                                  ),
+                                ),
+                                child: Text(
+                                  'ONLINE',
+                                  style: AppTypography.mono(
+                                    size: 7,
+                                    color: _accent,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                              ),
+                            ]),
+                            const SizedBox(height: 10),
+                            Container(
+                              height: 1,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    _accent.withValues(alpha: 0.5),
+                                    _accent.withValues(alpha: 0.0),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'Reach out for IT support, systems, networking, or solutions engineering roles.',
+                              style: AppTypography.body(
+                                size: 13,
+                                color: AppColors.textPrimary.withValues(
+                                  alpha: 0.65,
+                                ),
+                                height: 1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: _accent.withValues(alpha: 0.3),
+                                ),
+                                color: _accent.withValues(alpha: 0.07),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(
+                                '▸  AVAILABLE FOR OPPORTUNITIES',
+                                style: AppTypography.mono(
+                                  size: 7,
+                                  color: _accent.withValues(alpha: 0.8),
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 300),
+                    opacity: _active ? 1.0 : 0.0,
+                    child: CustomPaint(
+                      painter: CornerBracketPainter(_accent),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text('OPEN CHANNEL',
-                    style: AppTypography.hudLabel(color: AppColors.secondary)),
-                const Spacer(),
-                Text('ONLINE',
-                    style: AppTypography.mono(
-                        size: 7,
-                        color: AppColors.secondary.withValues(alpha: 0.55),
-                        letterSpacing: 1.5)),
-              ]),
-              const SizedBox(height: 10),
-              Container(
-                  height: 1,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [
-                      AppColors.secondary.withValues(alpha: 0.35),
-                      AppColors.secondary.withValues(alpha: 0.0)
-                    ]),
-                  )),
-              const SizedBox(height: 10),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChannelStripe extends StatelessWidget {
+  final bool hovered;
+  const _ChannelStripe({required this.hovered});
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = AppColors.secondary;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      width: 36,
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: hovered ? 0.14 : 0.07),
+        border: Border(
+          left: BorderSide(
+            color: accent.withValues(alpha: hovered ? 0.6 : 0.25),
+            width: 2,
+          ),
+        ),
+      ),
+      child: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               Text(
-                'Reach out for IT support, systems, networking, or solutions engineering roles.',
-                style: AppTypography.body(
-                    size: 13,
-                    color: AppColors.textPrimary.withValues(alpha: 0.65),
-                    height: 1.55),
-              ),
-              const SizedBox(height: 12),
-              // Availability tag
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                      color: AppColors.secondary.withValues(alpha: 0.3)),
-                  color: AppColors.secondary.withValues(alpha: 0.07),
-                  borderRadius: BorderRadius.circular(3),
+                '01',
+                style: AppTypography.mono(
+                  size: 8,
+                  color: accent,
+                  letterSpacing: 1.5,
                 ),
-                child: Text('▸  AVAILABLE FOR OPPORTUNITIES',
-                    style: AppTypography.mono(
-                        size: 7,
-                        color: AppColors.secondary.withValues(alpha: 0.8),
-                        letterSpacing: 1.2)),
               ),
-            ]),
-      );
+              const SizedBox(width: 6),
+              Text(
+                '·',
+                style: AppTypography.mono(
+                  size: 8,
+                  color: accent.withValues(alpha: 0.4),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'COMMS',
+                style: AppTypography.mono(
+                  size: 7,
+                  color: accent.withValues(alpha: 0.55),
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Contact grid — 2-column rows, resume chip highlighted ────────────────────
@@ -185,8 +342,11 @@ class _ContactGrid extends StatelessWidget {
   final ValueNotifier<double> notifier;
   final Future<void> Function(String) openLink;
 
-  const _ContactGrid(
-      {required this.links, required this.notifier, required this.openLink});
+  const _ContactGrid({
+    required this.links,
+    required this.notifier,
+    required this.openLink,
+  });
 
   bool _isResume(ContactLink l) => l.label.toUpperCase() == 'RESUME';
 
@@ -199,13 +359,16 @@ class _ContactGrid extends StatelessWidget {
       rows.add(Padding(
         padding: EdgeInsets.only(bottom: isLast ? 0 : AppLayout.spacing),
         child: IntrinsicHeight(
-          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: _chip(i)),
-            if (hasSecond) ...[
-              SizedBox(width: AppLayout.spacing),
-              Expanded(child: _chip(i + 1))
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _chip(i)),
+              if (hasSecond) ...[
+                SizedBox(width: AppLayout.spacing),
+                Expanded(child: _chip(i + 1)),
+              ],
             ],
-          ]),
+          ),
         ),
       ));
     }

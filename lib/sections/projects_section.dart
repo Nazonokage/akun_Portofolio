@@ -2,9 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/app_theme.dart';
+import '../core/perf.dart';
 import '../data/profile_data.dart';
 import '../widgets/morph_reveal.dart';
 import 'section_shell.dart';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+String _catLabel(ProjectCategory c) => switch (c) {
+      ProjectCategory.flutter => 'FLUTTER',
+      ProjectCategory.web => 'WEB',
+      ProjectCategory.backend => 'BACKEND',
+      ProjectCategory.desktop => 'DESKTOP',
+      ProjectCategory.tooling => 'TOOLING',
+      ProjectCategory.security => 'SECURITY',
+    };
+
+Future<void> _openUrl(String url) async {
+  final uri = Uri.parse(url);
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
+
+// ── Section ───────────────────────────────────────────────────────────────────
 
 class ProjectsSection extends StatelessWidget {
   final ValueNotifier<double> rawOffsetNotifier;
@@ -112,8 +133,6 @@ class _BlinkDotState extends State<_BlinkDot>
 }
 
 // ── Alternating grid ──────────────────────────────────────────────────────────
-// Wide layout: alternates [big | small] and [small | big] rows.
-// Narrow layout: single column stack.
 
 class _AlternatingGrid extends StatelessWidget {
   final List<ProjectEntry> projects;
@@ -128,6 +147,14 @@ class _AlternatingGrid extends StatelessWidget {
     required this.isWide,
   });
 
+  Widget _reveal(int idx, ProjectEntry p, CrossAxisAlignment side) =>
+      MorphReveal(
+        offsetNotifier: notifier,
+        triggerAt: triggerBase + idx * 40,
+        delayMs: idx * 80,
+        child: _ProjectCard(project: p, index: idx, accentSide: side),
+      );
+
   @override
   Widget build(BuildContext context) {
     if (!isWide) {
@@ -138,82 +165,59 @@ class _AlternatingGrid extends StatelessWidget {
             .map((e) => Padding(
                   padding: EdgeInsets.only(
                       bottom: e.key < projects.length - 1 ? 16 : 0),
-                  child: MorphReveal(
-                    offsetNotifier: notifier,
-                    triggerAt: triggerBase + e.key * 40,
-                    delayMs: e.key * 80,
-                    child: _ProjectCard(
-                        project: e.value,
-                        index: e.key,
-                        accentSide: CrossAxisAlignment.start),
-                  ),
+                  child: _reveal(e.key, e.value, CrossAxisAlignment.start),
                 ))
             .toList(),
       );
     }
 
-    // Wide: pairs of cards, alternating which side the accent stripe is on.
-    // Row pattern: [2/3 card · 1/3 card] then [1/3 card · 2/3 card]
     final rows = <Widget>[];
     for (var i = 0; i < projects.length; i += 2) {
-      final flip = (i ~/ 2).isOdd; // alternate every pair-row
+      final flip = (i ~/ 2).isOdd;
       final hasSecond = i + 1 < projects.length;
       final isLast = i + 2 >= projects.length;
-
       rows.add(Padding(
         padding: EdgeInsets.only(bottom: isLast ? 0 : 20),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: flip
-                ? [
-                    if (hasSecond) ...[
-                      Expanded(
-                          flex: 2,
-                          child: _reveal(
-                              i + 1, projects[i + 1], CrossAxisAlignment.end)),
-                      const SizedBox(width: 16),
-                    ],
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: flip
+              ? [
+                  if (hasSecond) ...[
                     Expanded(
-                        flex: 3,
-                        child:
-                            _reveal(i, projects[i], CrossAxisAlignment.start)),
-                  ]
-                : [
-                    Expanded(
-                        flex: 3,
-                        child: _reveal(i, projects[i], CrossAxisAlignment.end)),
-                    if (hasSecond) ...[
-                      const SizedBox(width: 16),
-                      Expanded(
-                          flex: 2,
-                          child: _reveal(i + 1, projects[i + 1],
-                              CrossAxisAlignment.start)),
-                    ],
+                        flex: 2,
+                        child: _reveal(
+                            i + 1, projects[i + 1], CrossAxisAlignment.end)),
+                    const SizedBox(width: 16)
                   ],
-          ),
+                  Expanded(
+                      flex: 3,
+                      child: _reveal(i, projects[i], CrossAxisAlignment.start)),
+                ]
+              : [
+                  Expanded(
+                      flex: 3,
+                      child: _reveal(i, projects[i], CrossAxisAlignment.end)),
+                  if (hasSecond) ...[
+                    const SizedBox(width: 16),
+                    Expanded(
+                        flex: 2,
+                        child: _reveal(
+                            i + 1, projects[i + 1], CrossAxisAlignment.start))
+                  ],
+                ],
         ),
       ));
     }
     return Column(children: rows);
   }
-
-  Widget _reveal(int idx, ProjectEntry p, CrossAxisAlignment side) =>
-      MorphReveal(
-        offsetNotifier: notifier,
-        triggerAt: triggerBase + idx * 40,
-        delayMs: idx * 80,
-        child: _ProjectCard(project: p, index: idx, accentSide: side),
-      );
 }
 
-// ── Project Card — Valorant schema style ──────────────────────────────────────
+// ── Project card ──────────────────────────────────────────────────────────────
 
 class _ProjectCard extends StatefulWidget {
   final ProjectEntry project;
   final int index;
-  final CrossAxisAlignment
-      accentSide; // start = stripe left, end = stripe right
+  final CrossAxisAlignment accentSide;
   const _ProjectCard(
       {required this.project, required this.index, required this.accentSide});
   @override
@@ -223,6 +227,9 @@ class _ProjectCard extends StatefulWidget {
 class _ProjectCardState extends State<_ProjectCard>
     with SingleTickerProviderStateMixin {
   bool _hovered = false;
+  bool _tapActive = false;
+  bool get _active => _hovered || _tapActive;
+
   late final AnimationController _scanCtrl = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 600));
   late final Animation<double> _scanAnim =
@@ -242,21 +249,19 @@ class _ProjectCardState extends State<_ProjectCard>
     super.dispose();
   }
 
-  Future<void> _openUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  static String _catLabel(ProjectCategory c) => switch (c) {
-        ProjectCategory.flutter => 'FLUTTER',
-        ProjectCategory.web => 'WEB',
-        ProjectCategory.backend => 'BACKEND',
-        ProjectCategory.desktop => 'DESKTOP',
-        ProjectCategory.tooling => 'TOOLING',
-        ProjectCategory.security => 'SECURITY',
-      };
+  // Shared animated badge — avoids the duplicated AnimatedContainer block
+  Widget _catBadge(Color accent) => AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          border:
+              Border.all(color: accent.withValues(alpha: _active ? 0.7 : 0.4)),
+          color: accent.withValues(alpha: _active ? 0.14 : 0.08),
+        ),
+        child: Text(_catLabel(widget.project.category),
+            style:
+                AppTypography.mono(size: 7, color: accent, letterSpacing: 1.2)),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -267,215 +272,189 @@ class _ProjectCardState extends State<_ProjectCard>
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedBuilder(
-        animation: _scanCtrl,
-        builder: (_, __) => ClipRect(
+      child: GestureDetector(
+        onTap: () {
+          if (Perf.isMobileWeb) {
+            setState(() => _tapActive = true);
+            Future.delayed(const Duration(milliseconds: 450), () {
+              if (mounted) setState(() => _tapActive = false);
+            });
+          }
+        },
+        behavior: HitTestBehavior.opaque,
+        child: ClipRect(
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOut,
-            transform: Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
+            transform: Matrix4.translationValues(0, _active ? -3 : 0, 0),
             decoration: BoxDecoration(
-              boxShadow: _hovered
+              boxShadow: _active
                   ? [
                       BoxShadow(
                           color: accent.withValues(alpha: 0.22),
                           blurRadius: 24,
                           spreadRadius: 2)
                     ]
-                  : [],
+                  : const [],
             ),
             child: Stack(children: [
-              // ── Base panel ───────────────────────────────────────────────
+              // Base panel
               Container(
                 decoration: BoxDecoration(
                   color: AppColors.surface.withValues(alpha: 0.55),
                   border: Border.all(
-                      color: accent.withValues(alpha: _hovered ? 0.5 : 0.2)),
+                      color: accent.withValues(alpha: _active ? 0.5 : 0.2)),
                 ),
                 child: IntrinsicHeight(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // ── Left accent stripe ────────────────────────────
                       if (stripeLeft)
                         _AccentStripe(
                             accent: accent,
                             index: widget.index,
                             label: _catLabel(p.category),
-                            hovered: _hovered),
-
-                      // ── Content ───────────────────────────────────────
+                            hovered: _active),
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                           child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Header row: category badge + year
-                                Row(children: [
-                                  if (!stripeLeft) ...[
-                                    AnimatedContainer(
-                                      duration:
-                                          const Duration(milliseconds: 200),
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 7, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                            color: accent.withValues(
-                                                alpha: _hovered ? 0.7 : 0.4)),
-                                        color: accent.withValues(
-                                            alpha: _hovered ? 0.14 : 0.08),
-                                      ),
-                                      child: Text(_catLabel(p.category),
-                                          style: AppTypography.mono(
-                                              size: 7,
-                                              color: accent,
-                                              letterSpacing: 1.2)),
-                                    ),
-                                    const Spacer(),
-                                  ],
-                                  Text(p.year,
-                                      style: AppTypography.mono(
-                                          size: 9,
-                                          color:
-                                              accent.withValues(alpha: 0.7))),
-                                  if (stripeLeft) const Spacer(),
-                                  if (stripeLeft) ...[
-                                    AnimatedContainer(
-                                      duration:
-                                          const Duration(milliseconds: 200),
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 7, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                            color: accent.withValues(
-                                                alpha: _hovered ? 0.7 : 0.4)),
-                                        color: accent.withValues(
-                                            alpha: _hovered ? 0.14 : 0.08),
-                                      ),
-                                      child: Text(_catLabel(p.category),
-                                          style: AppTypography.mono(
-                                              size: 7,
-                                              color: accent,
-                                              letterSpacing: 1.2)),
-                                    ),
-                                  ],
-                                ]),
-                                const SizedBox(height: 8),
-                                Text(p.name.toUpperCase(),
-                                    style: AppTypography.heading(
-                                        size: 14,
-                                        color: accent,
-                                        letterSpacing: 1.0)),
-                                const SizedBox(height: 3),
-                                Text(p.subtitle,
-                                    style: AppTypography.body(
-                                        size: 11,
-                                        color: AppColors.textSecondary
-                                            .withValues(alpha: 0.85))),
-                                const SizedBox(height: 8),
-                                // Stack chips
-                                Wrap(
-                                  spacing: 5,
-                                  runSpacing: 4,
-                                  children: p.stack
-                                      .split('·')
-                                      .map((t) => Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: accent.withValues(
-                                                  alpha: 0.06),
-                                              border: Border.all(
-                                                  color: accent.withValues(
-                                                      alpha: 0.2)),
-                                              borderRadius:
-                                                  BorderRadius.circular(2),
-                                            ),
-                                            child: Text(t.trim(),
-                                                style: AppTypography.mono(
-                                                    size: 8,
-                                                    color: AppColors.primary
-                                                        .withValues(
-                                                            alpha: 0.65),
-                                                    letterSpacing: 0.3)),
-                                          ))
-                                      .toList(),
-                                ),
-                                const SizedBox(height: 10),
-                                Container(
-                                    height: 1,
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: stripeLeft
-                                            ? Alignment.centerLeft
-                                            : Alignment.centerRight,
-                                        end: stripeLeft
-                                            ? Alignment.centerRight
-                                            : Alignment.centerLeft,
-                                        colors: [
-                                          accent.withValues(alpha: 0.5),
-                                          accent.withValues(alpha: 0.0)
-                                        ],
-                                      ),
-                                    )),
-                                const SizedBox(height: 8),
-                                // Bullets
-                                ...p.bullets.map((b) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 5),
-                                      child: Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Padding(
-                                              padding:
-                                                  const EdgeInsets.only(top: 2),
-                                              child: Text('▸',
-                                                  style: AppTypography.mono(
-                                                      size: 9,
-                                                      color: accent.withValues(
-                                                          alpha: 0.7))),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Expanded(
-                                                child: Text(b,
-                                                    style: AppTypography.body(
-                                                        size: 11,
-                                                        color: AppColors
-                                                            .textPrimary
-                                                            .withValues(
-                                                                alpha: 0.65),
-                                                        height: 1.5))),
-                                          ]),
-                                    )),
-                                // Links
-                                if (p.githubUrl != null ||
-                                    p.liveUrl != null) ...[
-                                  const SizedBox(height: 10),
-                                  Wrap(spacing: 8, children: [
-                                    if (p.githubUrl != null)
-                                      _LinkChip(
-                                          label: '⟨/⟩  GITHUB',
-                                          onTap: () => _openUrl(p.githubUrl!),
-                                          color: accent),
-                                    if (p.liveUrl != null)
-                                      _LinkChip(
-                                          label: '↗  LIVE',
-                                          onTap: () => _openUrl(p.liveUrl!),
-                                          color: AppColors.success),
-                                  ]),
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Header: badge + year
+                              Row(children: [
+                                if (!stripeLeft) ...[
+                                  _catBadge(accent),
+                                  const Spacer()
+                                ],
+                                Text(p.year,
+                                    style: AppTypography.mono(
+                                        size: 9,
+                                        color: accent.withValues(alpha: 0.7))),
+                                if (stripeLeft) ...[
+                                  const Spacer(),
+                                  _catBadge(accent)
                                 ],
                               ]),
+                              const SizedBox(height: 8),
+                              Text(p.name.toUpperCase(),
+                                  style: AppTypography.heading(
+                                      size: 14,
+                                      color: accent,
+                                      letterSpacing: 1.0)),
+                              const SizedBox(height: 3),
+                              Text(p.subtitle,
+                                  style: AppTypography.body(
+                                      size: 11,
+                                      color: AppColors.textSecondary
+                                          .withValues(alpha: 0.85))),
+                              const SizedBox(height: 8),
+
+                              // Stack chips
+                              Wrap(
+                                spacing: 5,
+                                runSpacing: 4,
+                                children: p.stack
+                                    .split('·')
+                                    .map((t) => Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                accent.withValues(alpha: 0.06),
+                                            border: Border.all(
+                                                color: accent.withValues(
+                                                    alpha: 0.2)),
+                                            borderRadius:
+                                                BorderRadius.circular(2),
+                                          ),
+                                          child: Text(t.trim(),
+                                              style: AppTypography.mono(
+                                                  size: 8,
+                                                  color: AppColors.primary
+                                                      .withValues(alpha: 0.65),
+                                                  letterSpacing: 0.3)),
+                                        ))
+                                    .toList(),
+                              ),
+                              const SizedBox(height: 10),
+
+                              // Divider
+                              Container(
+                                height: 1,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: stripeLeft
+                                        ? Alignment.centerLeft
+                                        : Alignment.centerRight,
+                                    end: stripeLeft
+                                        ? Alignment.centerRight
+                                        : Alignment.centerLeft,
+                                    colors: [
+                                      accent.withValues(alpha: 0.5),
+                                      accent.withValues(alpha: 0.0)
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+
+                              // Bullets
+                              ...p.bullets.map((b) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 5),
+                                    child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 2),
+                                            child: Text('▸',
+                                                style: AppTypography.mono(
+                                                    size: 9,
+                                                    color: accent.withValues(
+                                                        alpha: 0.7))),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                              child: Text(b,
+                                                  style: AppTypography.body(
+                                                      size: 11,
+                                                      color: AppColors
+                                                          .textPrimary
+                                                          .withValues(
+                                                              alpha: 0.65),
+                                                      height: 1.5))),
+                                        ]),
+                                  )),
+
+                              // Links
+                              if (p.githubUrl != null || p.liveUrl != null) ...[
+                                const SizedBox(height: 10),
+                                Wrap(spacing: 8, children: [
+                                  if (p.githubUrl != null)
+                                    _LinkChip(
+                                        label: '⟨/⟩  GITHUB',
+                                        onTap: () => _openUrl(p.githubUrl!),
+                                        color: accent),
+                                  if (p.liveUrl != null)
+                                    _LinkChip(
+                                        label: '↗  LIVE',
+                                        onTap: () => _openUrl(p.liveUrl!),
+                                        color: AppColors.success),
+                                ]),
+                              ],
+                            ],
+                          ),
                         ),
                       ),
-
-                      // ── Right accent stripe ───────────────────────────
                       if (!stripeLeft)
                         _AccentStripe(
                             accent: accent,
                             index: widget.index,
                             label: _catLabel(p.category),
-                            hovered: _hovered,
+                            hovered: _active,
                             flip: true),
                     ],
                   ),
@@ -484,25 +463,27 @@ class _ProjectCardState extends State<_ProjectCard>
 
               // Corner brackets on hover
               Positioned.fill(
-                  child: IgnorePointer(
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 300),
-                  opacity: _hovered ? 1.0 : 0.0,
-                  child: CustomPaint(painter: _CornerPainter(accent)),
+                child: IgnorePointer(
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 300),
+                    opacity: _active ? 1.0 : 0.0,
+                    child: CustomPaint(painter: _CornerPainter(accent)),
+                  ),
                 ),
-              )),
+              ),
 
               // Scan-line sweep
               Positioned.fill(
-                  child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _scanAnim,
-                  builder: (_, __) => _scanAnim.value >= 1.0
-                      ? const SizedBox.shrink()
-                      : CustomPaint(
-                          painter: _ScanPainter(_scanAnim.value, accent)),
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _scanAnim,
+                    builder: (_, __) => _scanAnim.value >= 1.0
+                        ? const SizedBox.shrink()
+                        : CustomPaint(
+                            painter: _ScanPainter(_scanAnim.value, accent)),
+                  ),
                 ),
-              )),
+              ),
             ]),
           ),
         ),
@@ -511,7 +492,7 @@ class _ProjectCardState extends State<_ProjectCard>
   }
 }
 
-// ── Accent stripe — Valorant-style vertical side bar ──────────────────────────
+// ── Accent stripe ─────────────────────────────────────────────────────────────
 
 class _AccentStripe extends StatelessWidget {
   final Color accent;
@@ -531,26 +512,20 @@ class _AccentStripe extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final indexStr = (index + 1).toString().padLeft(2, '0');
+    final borderSide = BorderSide(
+        color: accent.withValues(alpha: hovered ? 0.6 : 0.25), width: 2);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       width: 36,
       decoration: BoxDecoration(
         color: accent.withValues(alpha: hovered ? 0.14 : 0.07),
         border: Border(
-          left: flip
-              ? BorderSide.none
-              : BorderSide(
-                  color: accent.withValues(alpha: hovered ? 0.6 : 0.25),
-                  width: 2),
-          right: !flip
-              ? BorderSide.none
-              : BorderSide(
-                  color: accent.withValues(alpha: hovered ? 0.6 : 0.25),
-                  width: 2),
+          left: flip ? BorderSide.none : borderSide,
+          right: flip ? borderSide : BorderSide.none,
         ),
       ),
       child: CustomPaint(
-        painter: _StripePainter(accent: accent, flip: flip),
+        painter: _StripePainter(accent: accent),
         child: Center(
           child: RotatedBox(
             quarterTurns: flip ? 1 : 3,
@@ -576,12 +551,11 @@ class _AccentStripe extends StatelessWidget {
   }
 }
 
-// ── Stripe background painter — diagonal slash lines ─────────────────────────
+// ── Painters ──────────────────────────────────────────────────────────────────
 
 class _StripePainter extends CustomPainter {
   final Color accent;
-  final bool flip;
-  _StripePainter({required this.accent, required this.flip});
+  const _StripePainter({required this.accent});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -589,8 +563,7 @@ class _StripePainter extends CustomPainter {
       ..color = accent.withValues(alpha: 0.06)
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
-    const spacing = 8.0;
-    for (double d = -size.height; d < size.width + size.height; d += spacing) {
+    for (double d = -size.height; d < size.width + size.height; d += 8) {
       canvas.drawLine(
           Offset(d, 0), Offset(d + size.height, size.height), paint);
     }
@@ -600,11 +573,9 @@ class _StripePainter extends CustomPainter {
   bool shouldRepaint(_StripePainter old) => old.accent != accent;
 }
 
-// ── Corner bracket painter ────────────────────────────────────────────────────
-
 class _CornerPainter extends CustomPainter {
   final Color color;
-  _CornerPainter(this.color);
+  const _CornerPainter(this.color);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -614,53 +585,56 @@ class _CornerPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
     const l = 14.0, pad = 6.0;
     final w = size.width, h = size.height;
-    for (final path in [
-      Path()
-        ..moveTo(pad, pad + l)
-        ..lineTo(pad, pad)
-        ..lineTo(pad + l, pad),
-      Path()
-        ..moveTo(w - pad - l, pad)
-        ..lineTo(w - pad, pad)
-        ..lineTo(w - pad, pad + l),
-      Path()
-        ..moveTo(pad, h - pad - l)
-        ..lineTo(pad, h - pad)
-        ..lineTo(pad + l, h - pad),
-      Path()
-        ..moveTo(w - pad - l, h - pad)
-        ..lineTo(w - pad, h - pad)
-        ..lineTo(w - pad, h - pad - l),
-    ]) {
-      canvas.drawPath(path, p);
-    }
+    canvas
+      ..drawPath(
+          Path()
+            ..moveTo(pad, pad + l)
+            ..lineTo(pad, pad)
+            ..lineTo(pad + l, pad),
+          p)
+      ..drawPath(
+          Path()
+            ..moveTo(w - pad - l, pad)
+            ..lineTo(w - pad, pad)
+            ..lineTo(w - pad, pad + l),
+          p)
+      ..drawPath(
+          Path()
+            ..moveTo(pad, h - pad - l)
+            ..lineTo(pad, h - pad)
+            ..lineTo(pad + l, h - pad),
+          p)
+      ..drawPath(
+          Path()
+            ..moveTo(w - pad - l, h - pad)
+            ..lineTo(w - pad, h - pad)
+            ..lineTo(w - pad, h - pad - l),
+          p);
   }
 
   @override
   bool shouldRepaint(_CornerPainter old) => old.color != color;
 }
 
-// ── Scan-line painter ─────────────────────────────────────────────────────────
-
 class _ScanPainter extends CustomPainter {
   final double progress;
   final Color color;
-  _ScanPainter(this.progress, this.color);
+  const _ScanPainter(this.progress, this.color);
 
   @override
   void paint(Canvas canvas, Size size) {
     final y = size.height * progress;
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, y),
-        Paint()..color = color.withValues(alpha: 0.04 * (1 - progress)));
-    canvas.drawRect(
-      Rect.fromLTWH(0, y - 2, size.width, 4),
-      Paint()
-        ..shader = LinearGradient(colors: [
-          color.withValues(alpha: 0.0),
-          color.withValues(alpha: 0.55),
-          color.withValues(alpha: 0.0),
-        ]).createShader(Rect.fromLTWH(0, y - 2, size.width, 4)),
-    );
+    canvas
+      ..drawRect(Rect.fromLTWH(0, 0, size.width, y),
+          Paint()..color = color.withValues(alpha: 0.04 * (1 - progress)))
+      ..drawRect(
+          Rect.fromLTWH(0, y - 2, size.width, 4),
+          Paint()
+            ..shader = LinearGradient(colors: [
+              color.withValues(alpha: 0.0),
+              color.withValues(alpha: 0.55),
+              color.withValues(alpha: 0.0),
+            ]).createShader(Rect.fromLTWH(0, y - 2, size.width, 4)));
   }
 
   @override

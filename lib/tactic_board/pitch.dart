@@ -102,7 +102,7 @@ class _PitchWidgetState extends State<PitchWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final child = widget.dragModeEnabled
+    final painted = widget.dragModeEnabled
         ? Listener(
             behavior: HitTestBehavior.opaque,
             onPointerDown: _handlePointerDown,
@@ -127,6 +127,7 @@ class _PitchWidgetState extends State<PitchWidget> {
             ),
           )
         : GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTapDown: (d) {
               final hit = _hitTest(d.localPosition);
               widget.onPlayerTapped(hit);
@@ -149,10 +150,7 @@ class _PitchWidgetState extends State<PitchWidget> {
             ),
           );
 
-    return AbsorbPointer(
-      absorbing: false,
-      child: child,
-    );
+    return RepaintBoundary(child: painted);
   }
 }
 

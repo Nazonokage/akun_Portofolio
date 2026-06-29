@@ -42,7 +42,9 @@ class CombinedBgPainter extends CustomPainter {
 
     // ---- Aurora ----
     final sizeChanged = _lastSize != size;
-    final auroraKey = (Perf.enableAuroraAnim ? (auroraT * 30).round() : 0);
+    final auroraKey = (Perf.enableAuroraAnim
+        ? (auroraT * (Perf.lightEffects ? 15 : 30)).round()
+        : 0);
     if (sizeChanged || _auroraPicture == null || _lastAuroraKey != auroraKey) {
       _lastSize = size;
       _lastAuroraKey = auroraKey;

@@ -33,6 +33,6 @@ class Perf {
   static bool get enableLevitate => !lightEffects;
   static bool get enableAuroraAnim => !lightEffects;
   static bool get useBlur => !lightEffects;
-  static int get particleCount => lightEffects ? 8 : 16;
+  static int get particleCount => lightEffects ? 5 : 16;
 }
 

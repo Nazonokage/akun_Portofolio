@@ -104,6 +104,9 @@ class ContactChip extends StatefulWidget {
 class _ContactChipState extends State<ContactChip>
     with SingleTickerProviderStateMixin {
   bool _hovered = false;
+  bool _tapActive = false;
+
+  bool get _active => _hovered || _tapActive;
 
   late final AnimationController _pulse = AnimationController(
     vsync: this,
@@ -139,29 +142,37 @@ class _ContactChipState extends State<ContactChip>
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: () {
+          widget.onTap();
+          if (Perf.isMobileWeb) {
+            setState(() => _tapActive = true);
+            Future.delayed(const Duration(milliseconds: 450), () {
+              if (mounted) setState(() => _tapActive = false);
+            });
+          }
+        },
         child: RepaintBoundary(
           child: AnimatedBuilder(
             animation: _pulse,
             builder: (_, __) => AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
-              transform: Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
+              transform: Matrix4.translationValues(0, _active ? -3 : 0, 0),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
                 border: Border.all(
                   color: color.withValues(
-                      alpha: _hovered ? 0.75 : 0.22 + _pulse.value * 0.28),
-                  width: _hovered ? 1.5 : 1.0 + _pulse.value * 0.35,
+                      alpha: _active ? 0.75 : 0.22 + _pulse.value * 0.28),
+                  width: _active ? 1.5 : 1.0 + _pulse.value * 0.35,
                 ),
                 borderRadius: BorderRadius.circular(6),
                 color: color.withValues(
-                    alpha: _hovered ? 0.10 : 0.03 + _pulse.value * 0.045),
+                    alpha: _active ? 0.10 : 0.03 + _pulse.value * 0.045),
                 boxShadow: [
                   BoxShadow(
                     color: color.withValues(
-                        alpha: _hovered ? 0.20 : _pulse.value * 0.12),
-                    blurRadius: _hovered ? 18 : 10,
+                        alpha: _active ? 0.20 : _pulse.value * 0.12),
+                    blurRadius: _active ? 18 : 10,
                   ),
                 ],
               ),
@@ -184,7 +195,7 @@ class _ContactChipState extends State<ContactChip>
                       style: TextStyle(
                           fontSize: 8,
                           letterSpacing: 2.2,
-                          color: color.withValues(alpha: _hovered ? 1.0 : 0.65),
+                          color: color.withValues(alpha: _active ? 1.0 : 0.65),
                           fontFamily: 'monospace'),
                     ),
                   ]),
@@ -197,7 +208,7 @@ class _ContactChipState extends State<ContactChip>
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
                       color:
-                          Colors.white.withValues(alpha: _hovered ? 1.0 : 0.88),
+                          Colors.white.withValues(alpha: _active ? 1.0 : 0.88),
                       fontFamily: 'monospace',
                     ),
                   ),

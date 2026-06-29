@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/app_theme.dart';
 import '../data/profile_data.dart';
+import '../widgets/hover_card.dart';
 import '../widgets/hud_decorations.dart';
 import '../widgets/info_card.dart';
 import '../widgets/morph_reveal.dart';
@@ -22,9 +23,14 @@ class AboutSection extends StatelessWidget {
         MorphReveal(
           offsetNotifier: rawOffsetNotifier,
           triggerAt: 220,
-          child: HudPanel(
-            borderAlpha: 0.16,
-            child: Column(
+          child: HoverCard(
+            accent: AppColors.primary,
+            child: HudPanel(
+              borderAlpha: 0.16,
+              padding: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.all(AppLayout.padding),
+                child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -58,6 +64,8 @@ class AboutSection extends StatelessWidget {
                   ),
                 ),
               ],
+                ),
+              ),
             ),
           ),
         ),

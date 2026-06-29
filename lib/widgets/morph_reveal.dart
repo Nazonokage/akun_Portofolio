@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/perf.dart';
+
 class MorphReveal extends StatefulWidget {
   final Widget child;
   final ValueNotifier<double> offsetNotifier;
@@ -59,7 +61,17 @@ class _MorphRevealState extends State<MorphReveal> {
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedOpacity(
+  Widget build(BuildContext context) {
+    if (Perf.isMobileWeb || Perf.reduceMotion) {
+      return Visibility(
+        visible: _visible,
+        maintainState: true,
+        maintainAnimation: false,
+        maintainSize: false,
+        child: widget.child,
+      );
+    }
+    return AnimatedOpacity(
         opacity: _visible ? 1.0 : 0.0,
         duration: const Duration(milliseconds: 750),
         curve: Curves.easeOut,
@@ -70,4 +82,5 @@ class _MorphRevealState extends State<MorphReveal> {
           child: widget.child,
         ),
       );
+  }
 }

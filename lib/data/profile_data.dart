@@ -188,7 +188,7 @@ class ProfileData {
     SkillRating(name: 'Backend', score: 8),
     SkillRating(name: 'Frontend', score: 8),
     SkillRating(name: 'OS Admin', score: 7),
-    SkillRating(name: 'Solutions', score: 9),
+    SkillRating(name: 'Hardware', score: 9),
   ];
 
   static const ratedSkills = [
@@ -317,19 +317,30 @@ class ProfileData {
       ],
     ),
     ProjectEntry(
-      name: 'Lane Ledger',
-      subtitle: 'Wild Rift Draft Companion · Lane Matchup Assistant',
-      stack: 'React 19 · Vite · TypeScript · JSON',
-      year: '2025',
+      name: 'Clean Player',
+      subtitle: 'Dark-Themed Media Player · Flutter Desktop',
+      stack: 'Flutter · Desktop · Subtitles · EQ',
+      year: '2024',
       featured: true,
-      category: ProjectCategory.web,
-      accent: AppColors.success,
+      category: ProjectCategory.flutter,
+      accent: AppColors.accent2,
       bullets: [
-        'Lightning-fast Wild Rift draft companion for smart ADC/APC (Dragon lane) and full-team pick decisions during champion select.',
-        'Almanac for deep champion matchups + Draft Helper with client-side scoring engine (synergies, counters, draft rules, flex picks & warnings).',
-        'All data pre-bundled from lane-specific JSON sources — blazing fast and mobile-friendly.',
+        'Minimal dark UI with subtitle styling, audio track selection, and volume enhancement.',
+        'Recent files, playlist management, and keyboard shortcuts for desktop.',
       ],
-      // liveUrl: 'https://lane-matchup-assistant.vercel.app/',
+    ),
+    ProjectEntry(
+      name: 'Bus Ticketing System',
+      subtitle: 'Desktop Application · Freelance Project',
+      stack: 'Java · MySQL · Thermal Printer Integration',
+      year: '2023',
+      featured: true,
+      category: ProjectCategory.desktop,
+      accent: AppColors.warning,
+      bullets: [
+        'Delivered a client-facing desktop app for bus ticketing and fare management.',
+        'Implemented automated discount categories and thermal printer integration.',
+      ],
     ),
     ProjectEntry(
       name: 'AE Group Business Site',
@@ -358,33 +369,6 @@ class ProfileData {
       ],
     ),
     ProjectEntry(
-      name: 'Movie Ticketing System',
-      subtitle: 'Java Desktop App · Priority Pricing',
-      stack: 'Java · MySQL · Thermal Printer',
-      year: '2023',
-      featured: true,
-      category: ProjectCategory.desktop,
-      githubUrl: 'https://github.com/Nazonokage/Movie-Ticketing-Project',
-      accent: AppColors.accent3,
-      bullets: [
-        'Role-based auth, ticket booking with VIP/student/senior/PWD discount tiers.',
-        'Real-time transaction tracking and thermal ticket printing.',
-      ],
-    ),
-    ProjectEntry(
-      name: 'Clean Player',
-      subtitle: 'Dark-Themed Media Player · Flutter Desktop',
-      stack: 'Flutter · Desktop · Subtitles · EQ',
-      year: '2024',
-      featured: true,
-      category: ProjectCategory.flutter,
-      accent: AppColors.accent2,
-      bullets: [
-        'Minimal dark UI with subtitle styling, audio track selection, and volume enhancement.',
-        'Recent files, playlist management, and keyboard shortcuts for desktop.',
-      ],
-    ),
-    ProjectEntry(
       name: 'PSG Fan Site',
       subtitle: 'Multi-Page Football Club Website · 1st Year',
       stack: 'HTML · CSS · JavaScript · Font Awesome',
@@ -409,6 +393,21 @@ class ProfileData {
         'Simulates keystrokes to bypass paste restrictions in RDP, VDI, and secure terminals.',
         'Configurable delays, randomization, punctuation pauses, and live progress counter.',
       ],
+    ),
+    ProjectEntry(
+      name: 'Lane Ledger',
+      subtitle: 'Wild Rift Draft Companion · Lane Matchup Assistant',
+      stack: 'React 19 · Vite · TypeScript · JSON',
+      year: '2025',
+      featured: true,
+      category: ProjectCategory.web,
+      accent: AppColors.success,
+      bullets: [
+        'Lightning-fast Wild Rift draft companion for smart ADC/APC (Dragon lane) and full-team pick decisions during champion select.',
+        'Almanac for deep champion matchups + Draft Helper with client-side scoring engine (synergies, counters, draft rules, flex picks & warnings).',
+        'All data pre-bundled from lane-specific JSON sources — blazing fast and mobile-friendly.',
+      ],
+      // liveUrl: 'https://lane-matchup-assistant.vercel.app/',
     ),
   ];
 
@@ -438,16 +437,29 @@ class ProfileData {
       accent: AppColors.secondary,
     ),
     ProjectEntry(
-      name: 'Bus Ticketing System',
-      subtitle: 'Desktop Application · Academic Project',
-      stack: 'Java · MySQL · Thermal Printer Integration',
+      name: 'Casa Italiana',
+      subtitle: 'Hotel & Restaurant Web App · 2nd Year Academic',
+      stack: 'PHP · MySQL · HTML/CSS/JS · mysqli',
+      year: '2024',
+      category: ProjectCategory.backend,
+      bullets: [
+        'Combined hotel room booking and restaurant ordering with role-based redirects (Member, Admin, S_Admin).',
+        'Room reservations update availability; food menu with order status flow (Pending → Accepted → Done).',
+      ],
+      accent: AppColors.accent2,
+    ),
+    ProjectEntry(
+      name: 'Movie Ticketing System',
+      subtitle: 'Java Swing Desktop · Academic Project',
+      stack: 'Java · MySQL · Swing · PrinterJob',
       year: '2023',
       category: ProjectCategory.desktop,
+      githubUrl: 'https://github.com/Nazonokage/Movie-Ticketing-Project',
       bullets: [
-        'Developed a desktop application for bus ticketing and fare management.',
-        'Implemented automated discount categories and thermal printer integration.',
+        'CRUD ticket registry with VIP/student/senior/PWD/child discount tiers and 11% VAT on receipts.',
+        'JTable management UI, parameterized MySQL inserts, and thermal receipt printing via PrinterJob.',
       ],
-      accent: AppColors.warning,
+      accent: AppColors.accent3,
     ),
   ];
 

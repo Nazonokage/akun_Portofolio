@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -33,6 +34,12 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
   List<List<Offset?>> _history = [];
   int _historyIndex = -1;
   String _currentFormation = "4-2-3-1";
+  String _cachedFormation = "4-2-3-1";
+  Timer? _dragDebounce;
+  int? _pendingDragIndex;
+  Offset? _pendingDragPos;
+
+  String get _formationString => _cachedFormation;
 
   @override
   void initState() {
@@ -75,6 +82,7 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
 
   @override
   void dispose() {
+    _dragDebounce?.cancel();
     animationsPaused.removeListener(_syncAnimPause);
     _levitate.dispose();
     _pulse.dispose();
@@ -147,14 +155,19 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
 
   void _onPlayerDragged(int index, Offset newPos) {
     if (index == 0) return;
-    setState(() {
-      _customPositions[index] = newPos;
-      _notifyFormationChanged();
+    _pendingDragIndex = index;
+    _pendingDragPos = newPos;
+    _dragDebounce?.cancel();
+    _dragDebounce = Timer(const Duration(milliseconds: 16), () {
+      if (!mounted || _pendingDragIndex == null || _pendingDragPos == null) {
+        return;
+      }
+      setState(() {
+        _customPositions[_pendingDragIndex!] = _pendingDragPos!;
+        _notifyFormationChanged();
+      });
     });
   }
-
-  String _cachedFormation = "4-2-3-1";
-  String get _formationString => _cachedFormation;
 
   void _recomputeFormation() {
     const pitchW = 308.0;
@@ -265,11 +278,13 @@ class _FloatingTacticBoardState extends State<FloatingTacticBoard>
       ],
     );
 
-    return Stack(
-      children: [
-        boardColumn,
-        if (_expanded) _buildFullscreenOverlay(screenSize),
-      ],
+    return RepaintBoundary(
+      child: Stack(
+        children: [
+          boardColumn,
+          if (_expanded) _buildFullscreenOverlay(screenSize),
+        ],
+      ),
     );
   }
 }
